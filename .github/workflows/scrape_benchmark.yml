@@ -1,258 +1,129 @@
-name: Debug Compare Requests
+name: Airbnb Benchmark Scraper
 
 on:
   workflow_dispatch:
     inputs:
-      place_id:
-        description: 'Place ID (ex: ChIJg_kMcC9oXz4RBLnAdrBYzLU)'
+      # ===== ZONE GÉOGRAPHIQUE =====
+      center_lat:
+        description: 'Latitude du centre (Google Maps)'
         required: true
-        default: 'ChIJg_kMcC9oXz4RBLnAdrBYzLU'
+        type: string
+      center_lng:
+        description: 'Longitude du centre (Google Maps)'
+        required: true
+        type: string
+      radius_km:
+        description: 'Rayon en km (ex: 0.5, 1, 2, 5)'
+        required: true
+        type: string
+        default: '1.5'
+      
+      # ===== FILTRES LOGEMENT =====
+      room_type:
+        description: 'Type: entire_home / private_room / shared_room / (vide = tous)'
+        required: false
+        type: string
+        default: ''
+      min_bedrooms:
+        description: 'Min chambres (0=studio, 1=1BR, vide=pas de filtre)'
+        required: false
+        type: string
+        default: ''
+      max_bedrooms:
+        description: 'Max chambres (vide = pas de filtre)'
+        required: false
+        type: string
+        default: ''
+      guests:
+        description: 'Nombre de voyageurs (vide = pas de filtre)'
+        required: false
+        type: string
+        default: ''
+      
+      # ===== FILTRES LOGEMENTS EXCEPTIONNELS =====
+      guest_favorite:
+        description: 'Coup de cœur voyageurs uniquement (true / vide)'
+        required: false
+        type: string
+        default: ''
+      luxe:
+        description: 'Logements Luxe uniquement (true / vide)'
+        required: false
+        type: string
+        default: ''
       query:
-        description: 'Query text (ex: Downtown Dubai)'
+        description: 'Recherche textuelle (ex: Downtown Dubai) - REQUIS si guest_favorite=true'
+        required: false
+        type: string
+        default: ''
+      
+      # ===== DATES =====
+      days_from_now:
+        description: 'Check-in dans X jours (ex: 7)'
         required: true
-        default: 'Downtown Dubai'
+        type: string
+        default: '7'
+      stay_duration:
+        description: 'Durée du séjour en nuits (ex: 3)'
+        required: true
+        type: string
+        default: '3'
+      
+      # ===== OPTIONS =====
+      currency:
+        description: 'Devise (AED, EUR, USD...)'
+        required: false
+        type: string
+        default: 'AED'
+
+permissions:
+  contents: write
 
 jobs:
-  debug:
+  scrape:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       
       - name: Install dependencies
-        run: pip install curl_cffi
-      
-      - name: Compare requests
-        env:
-          PLACE_ID: ${{ inputs.place_id }}
-          QUERY: ${{ inputs.query }}
         run: |
-          python << 'EOF'
-          import json
-          import os
-          from curl_cffi import requests as curl_requests
-
-          AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
-          GRAPHQL_HASH = "d9ab2c7e443b50fdce5cdcb69d4f7e7626dbab1609c981565a6c4bdbb04546e3"
-          
-          PLACE_ID = os.environ.get("PLACE_ID", "ChIJg_kMcC9oXz4RBLnAdrBYzLU")
-          QUERY = os.environ.get("QUERY", "Downtown Dubai")
-
-          headers = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-              "Accept": "*/*",
-              "Accept-Language": "en-US,en;q=0.9",
-              "Content-Type": "application/json",
-              "X-Airbnb-API-Key": AIRBNB_API_KEY,
-              "X-Airbnb-GraphQL-Platform": "web",
-              "X-Airbnb-GraphQL-Platform-Client": "minimalist-niobe",
-              "X-CSRF-Without-Token": "1",
-              "Origin": "https://www.airbnb.com",
-              "Referer": "https://www.airbnb.com/s/Downtown-Dubai/homes",
-          }
-
-          def test_request(name, raw_params):
-              """Teste une requête GraphQL et affiche le résultat."""
-              print(f"\n{'='*60}")
-              print(f"🧪 TEST: {name}")
-              print(f"{'='*60}")
-              
-              treatment_flags = [
-                  "feed_map_decouple_m11_treatment",
-                  "recommended_amenities_2024_treatment_b",
-                  "filter_redesign_2024_treatment",
-                  "filter_reordering_2024_roomtype_treatment",
-                  "p2_category_bar_removal_treatment",
-                  "selected_filters_2024_treatment",
-                  "recommended_filters_2024_treatment_b",
-                  "m13_search_input_phase2_treatment",
-                  "m13_search_input_services_enabled"
-              ]
-              
-              search_request = {
-                  "metadataOnly": False,
-                  "requestedPageType": "STAYS_SEARCH",
-                  "searchType": "filter_change",
-                  "treatmentFlags": treatment_flags,
-                  "maxMapItems": 9999,
-                  "rawParams": raw_params
-              }
-              
-              payload = {
-                  "operationName": "StaysSearch",
-                  "variables": {
-                      "staysSearchRequest": search_request,
-                      "staysMapSearchRequestV2": search_request.copy(),
-                      "isLeanTreatment": False,
-                      "aiSearchEnabled": False,
-                      "skipExtendedSearchParams": False
-                  },
-                  "extensions": {
-                      "persistedQuery": {
-                          "version": 1,
-                          "sha256Hash": GRAPHQL_HASH
-                      }
-                  }
-              }
-              
-              # Afficher les paramètres clés
-              print("\n📤 rawParams clés:")
-              for p in raw_params:
-                  print(f"   {p['filterName']}: {p['filterValues']}")
-              
-              try:
-                  response = curl_requests.post(
-                      f"https://www.airbnb.com/api/v3/StaysSearch/{GRAPHQL_HASH}?operationName=StaysSearch&locale=en&currency=AED",
-                      headers=headers,
-                      json=payload,
-                      impersonate="chrome120",
-                      timeout=30
-                  )
-                  
-                  print(f"\n📊 Status: {response.status_code}")
-                  
-                  data = response.json()
-                  
-                  if "errors" in data:
-                      print(f"❌ ERREUR: {data['errors'][0].get('message', 'Unknown')}")
-                      print(f"   Details: {json.dumps(data['errors'][0].get('extensions', {}), indent=2)[:500]}")
-                      return 0
-                  else:
-                      stays_search = data.get("data", {}).get("presentation", {}).get("staysSearch", {})
-                      results = stays_search.get("results", {})
-                      search_results = results.get("searchResults", [])
-                      print(f"✅ SUCCÈS: {len(search_results)} listings trouvés")
-                      
-                      if search_results:
-                          first = search_results[0]
-                          print(f"   Premier: {first.get('title', 'N/A')[:40]}...")
-                          print(f"   ID: {first.get('propertyId')}")
-                      return len(search_results)
-                      
-              except Exception as e:
-                  print(f"❌ Exception: {e}")
-                  return 0
-
-          print("="*60)
-          print("🔍 COMPARAISON DES REQUÊTES GRAPHQL")
-          print("="*60)
-          print(f"\nPlace ID: {PLACE_ID}")
-          print(f"Query: {QUERY}")
-
-          # ============================================================
-          # TEST 1: Payload EXACT copié du navigateur (qui fonctionne)
-          # ============================================================
-          params_exact = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["18"]},
-              {"filterName": "placeId", "filterValues": [PLACE_ID]},
-              {"filterName": "priceFilterInputType", "filterValues": ["2"]},
-              {"filterName": "priceFilterNumNights", "filterValues": ["5"]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("EXACT (copié du navigateur)", params_exact)
-
-          # ============================================================
-          # TEST 2: Sans placeId (seulement query)
-          # ============================================================
-          params_no_placeid = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("Sans placeId (query seul)", params_no_placeid)
-
-          # ============================================================
-          # TEST 3: Avec bounding box au lieu de query
-          # ============================================================
-          params_bbox = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "neLat", "filterValues": ["25.208047"]},
-              {"filterName": "neLng", "filterValues": ["55.286305"]},
-              {"filterName": "swLat", "filterValues": ["25.181020"]},
-              {"filterName": "swLng", "filterValues": ["55.256437"]},
-              {"filterName": "searchByMap", "filterValues": ["true"]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("Avec bounding box", params_bbox)
-
-          # ============================================================
-          # TEST 4: placeId + query SANS guestFavorite
-          # ============================================================
-          params_no_gf = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "placeId", "filterValues": [PLACE_ID]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("placeId + query SANS guestFavorite", params_no_gf)
-
-          # ============================================================
-          # TEST 5: Minimal avec placeId + guestFavorite
-          # ============================================================
-          params_minimal = [
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "placeId", "filterValues": [PLACE_ID]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-          ]
-          test_request("MINIMAL (placeId + query + guestFavorite)", params_minimal)
-
-          print("\n" + "="*60)
-          print("🎉 FIN DES TESTS")
-          print("="*60)
-          EOF
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run benchmark scraper
+        env:
+          CENTER_LAT: ${{ inputs.center_lat }}
+          CENTER_LNG: ${{ inputs.center_lng }}
+          RADIUS_KM: ${{ inputs.radius_km }}
+          ROOM_TYPE: ${{ inputs.room_type }}
+          MIN_BEDROOMS: ${{ inputs.min_bedrooms }}
+          MAX_BEDROOMS: ${{ inputs.max_bedrooms }}
+          GUESTS: ${{ inputs.guests }}
+          GUEST_FAVORITE: ${{ inputs.guest_favorite }}
+          LUXE: ${{ inputs.luxe }}
+          QUERY: ${{ inputs.query }}
+          DAYS_FROM_NOW: ${{ inputs.days_from_now }}
+          STAY_DURATION: ${{ inputs.stay_duration }}
+          CURRENCY: ${{ inputs.currency }}
+        run: python scrape_benchmark.py
+      
+      - name: Upload CSV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: airbnb-benchmark-data
+          path: benchmark_*.csv
+      
+      - name: Commit results
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add benchmark_*.csv || true
+          git commit -m "Benchmark data $(date +'%Y-%m-%d %H:%M')" || true
+          git push || true
