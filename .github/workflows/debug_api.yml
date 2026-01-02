@@ -1,7 +1,16 @@
-name: Debug GraphQL StaysSearch
+name: Debug Compare Requests
 
 on:
   workflow_dispatch:
+    inputs:
+      place_id:
+        description: 'Place ID (ex: ChIJg_kMcC9oXz4RBLnAdrBYzLU)'
+        required: true
+        default: 'ChIJg_kMcC9oXz4RBLnAdrBYzLU'
+      query:
+        description: 'Query text (ex: Downtown Dubai)'
+        required: true
+        default: 'Downtown Dubai'
 
 jobs:
   debug:
@@ -17,14 +26,21 @@ jobs:
       - name: Install dependencies
         run: pip install curl_cffi
       
-      - name: Test GraphQL StaysSearch
+      - name: Compare requests
+        env:
+          PLACE_ID: ${{ inputs.place_id }}
+          QUERY: ${{ inputs.query }}
         run: |
           python << 'EOF'
           import json
+          import os
           from curl_cffi import requests as curl_requests
 
           AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
           GRAPHQL_HASH = "d9ab2c7e443b50fdce5cdcb69d4f7e7626dbab1609c981565a6c4bdbb04546e3"
+          
+          PLACE_ID = os.environ.get("PLACE_ID", "ChIJg_kMcC9oXz4RBLnAdrBYzLU")
+          QUERY = os.environ.get("QUERY", "Downtown Dubai")
 
           headers = {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
@@ -39,8 +55,113 @@ jobs:
               "Referer": "https://www.airbnb.com/s/Downtown-Dubai/homes",
           }
 
-          # Payload exact copié de ta requête (simplifié)
-          raw_params = [
+          def test_request(name, raw_params):
+              """Teste une requête GraphQL et affiche le résultat."""
+              print(f"\n{'='*60}")
+              print(f"🧪 TEST: {name}")
+              print(f"{'='*60}")
+              
+              treatment_flags = [
+                  "feed_map_decouple_m11_treatment",
+                  "recommended_amenities_2024_treatment_b",
+                  "filter_redesign_2024_treatment",
+                  "filter_reordering_2024_roomtype_treatment",
+                  "p2_category_bar_removal_treatment",
+                  "selected_filters_2024_treatment",
+                  "recommended_filters_2024_treatment_b",
+                  "m13_search_input_phase2_treatment",
+                  "m13_search_input_services_enabled"
+              ]
+              
+              search_request = {
+                  "metadataOnly": False,
+                  "requestedPageType": "STAYS_SEARCH",
+                  "searchType": "filter_change",
+                  "treatmentFlags": treatment_flags,
+                  "maxMapItems": 9999,
+                  "rawParams": raw_params
+              }
+              
+              payload = {
+                  "operationName": "StaysSearch",
+                  "variables": {
+                      "staysSearchRequest": search_request,
+                      "staysMapSearchRequestV2": search_request.copy(),
+                      "isLeanTreatment": False,
+                      "aiSearchEnabled": False,
+                      "skipExtendedSearchParams": False
+                  },
+                  "extensions": {
+                      "persistedQuery": {
+                          "version": 1,
+                          "sha256Hash": GRAPHQL_HASH
+                      }
+                  }
+              }
+              
+              # Afficher les paramètres clés
+              print("\n📤 rawParams clés:")
+              for p in raw_params:
+                  print(f"   {p['filterName']}: {p['filterValues']}")
+              
+              try:
+                  response = curl_requests.post(
+                      f"https://www.airbnb.com/api/v3/StaysSearch/{GRAPHQL_HASH}?operationName=StaysSearch&locale=en&currency=AED",
+                      headers=headers,
+                      json=payload,
+                      impersonate="chrome120",
+                      timeout=30
+                  )
+                  
+                  print(f"\n📊 Status: {response.status_code}")
+                  
+                  data = response.json()
+                  
+                  if "errors" in data:
+                      print(f"❌ ERREUR: {data['errors'][0].get('message', 'Unknown')}")
+                      print(f"   Details: {json.dumps(data['errors'][0].get('extensions', {}), indent=2)[:500]}")
+                      return 0
+                  else:
+                      stays_search = data.get("data", {}).get("presentation", {}).get("staysSearch", {})
+                      results = stays_search.get("results", {})
+                      search_results = results.get("searchResults", [])
+                      print(f"✅ SUCCÈS: {len(search_results)} listings trouvés")
+                      
+                      if search_results:
+                          first = search_results[0]
+                          print(f"\n   Premier résultat - TOUTES LES CLÉS:")
+                          print(f"   {list(first.keys())}")
+                          print(f"\n   Valeurs importantes:")
+                          print(f"   - propertyId: {first.get('propertyId')}")
+                          print(f"   - id: {first.get('id')}")
+                          print(f"   - listingId: {first.get('listingId')}")
+                          print(f"   - title: {first.get('title', 'N/A')[:40]}")
+                          
+                          # Chercher l'ID dans d'autres endroits
+                          listing_obj = first.get("listing", {})
+                          if listing_obj:
+                              print(f"   - listing.id: {listing_obj.get('id')}")
+                          
+                          # Vérifier listingParamOverrides
+                          lpo = first.get("listingParamOverrides", {})
+                          if lpo:
+                              print(f"   - listingParamOverrides: {lpo}")
+                      return len(search_results)
+                      
+              except Exception as e:
+                  print(f"❌ Exception: {e}")
+                  return 0
+
+          print("="*60)
+          print("🔍 COMPARAISON DES REQUÊTES GRAPHQL")
+          print("="*60)
+          print(f"\nPlace ID: {PLACE_ID}")
+          print(f"Query: {QUERY}")
+
+          # ============================================================
+          # TEST 1: Payload EXACT copié du navigateur (qui fonctionne)
+          # ============================================================
+          params_exact = [
               {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
               {"filterName": "channel", "filterValues": ["EXPLORE"]},
               {"filterName": "checkin", "filterValues": ["2026-02-20"]},
@@ -49,10 +170,10 @@ jobs:
               {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
               {"filterName": "guestFavorite", "filterValues": ["true"]},
               {"filterName": "itemsPerGrid", "filterValues": ["18"]},
-              {"filterName": "placeId", "filterValues": ["ChIJg_kMcC9oXz4RBLnAdrBYzLU"]},
+              {"filterName": "placeId", "filterValues": [PLACE_ID]},
               {"filterName": "priceFilterInputType", "filterValues": ["2"]},
               {"filterName": "priceFilterNumNights", "filterValues": ["5"]},
-              {"filterName": "query", "filterValues": ["Downtown Dubai"]},
+              {"filterName": "query", "filterValues": [QUERY]},
               {"filterName": "refinementPaths", "filterValues": ["/homes"]},
               {"filterName": "screenSize", "filterValues": ["large"]},
               {"filterName": "searchMode", "filterValues": ["regular_search"]},
@@ -60,117 +181,93 @@ jobs:
               {"filterName": "tabId", "filterValues": ["home_tab"]},
               {"filterName": "version", "filterValues": ["1.8.3"]},
           ]
+          test_request("EXACT (copié du navigateur)", params_exact)
 
-          treatment_flags = [
-              "feed_map_decouple_m11_treatment",
-              "recommended_amenities_2024_treatment_b",
-              "filter_redesign_2024_treatment",
-              "filter_reordering_2024_roomtype_treatment",
-              "p2_category_bar_removal_treatment",
-              "selected_filters_2024_treatment",
-              "recommended_filters_2024_treatment_b",
-              "m13_search_input_phase2_treatment",
-              "m13_search_input_services_enabled"
+          # ============================================================
+          # TEST 2: Sans placeId (seulement query)
+          # ============================================================
+          params_no_placeid = [
+              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
+              {"filterName": "channel", "filterValues": ["EXPLORE"]},
+              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
+              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
+              {"filterName": "datePickerType", "filterValues": ["calendar"]},
+              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
+              {"filterName": "guestFavorite", "filterValues": ["true"]},
+              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
+              {"filterName": "query", "filterValues": [QUERY]},
+              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
+              {"filterName": "screenSize", "filterValues": ["large"]},
+              {"filterName": "searchMode", "filterValues": ["regular_search"]},
+              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
+              {"filterName": "tabId", "filterValues": ["home_tab"]},
+              {"filterName": "version", "filterValues": ["1.8.3"]},
           ]
+          test_request("Sans placeId (query seul)", params_no_placeid)
 
-          search_request = {
-              "metadataOnly": False,
-              "requestedPageType": "STAYS_SEARCH",
-              "searchType": "filter_change",
-              "treatmentFlags": treatment_flags,
-              "maxMapItems": 9999,
-              "rawParams": raw_params
-          }
+          # ============================================================
+          # TEST 3: Avec bounding box au lieu de query
+          # ============================================================
+          params_bbox = [
+              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
+              {"filterName": "channel", "filterValues": ["EXPLORE"]},
+              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
+              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
+              {"filterName": "datePickerType", "filterValues": ["calendar"]},
+              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
+              {"filterName": "guestFavorite", "filterValues": ["true"]},
+              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
+              {"filterName": "neLat", "filterValues": ["25.208047"]},
+              {"filterName": "neLng", "filterValues": ["55.286305"]},
+              {"filterName": "swLat", "filterValues": ["25.181020"]},
+              {"filterName": "swLng", "filterValues": ["55.256437"]},
+              {"filterName": "searchByMap", "filterValues": ["true"]},
+              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
+              {"filterName": "screenSize", "filterValues": ["large"]},
+              {"filterName": "searchMode", "filterValues": ["regular_search"]},
+              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
+              {"filterName": "tabId", "filterValues": ["home_tab"]},
+              {"filterName": "version", "filterValues": ["1.8.3"]},
+          ]
+          test_request("Avec bounding box", params_bbox)
 
-          payload = {
-              "operationName": "StaysSearch",
-              "variables": {
-                  "staysSearchRequest": search_request,
-                  "staysMapSearchRequestV2": search_request.copy(),
-                  "isLeanTreatment": False,
-                  "aiSearchEnabled": False,
-                  "skipExtendedSearchParams": False
-              },
-              "extensions": {
-                  "persistedQuery": {
-                      "version": 1,
-                      "sha256Hash": GRAPHQL_HASH
-                  }
-              }
-          }
+          # ============================================================
+          # TEST 4: placeId + query SANS guestFavorite
+          # ============================================================
+          params_no_gf = [
+              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
+              {"filterName": "channel", "filterValues": ["EXPLORE"]},
+              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
+              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
+              {"filterName": "datePickerType", "filterValues": ["calendar"]},
+              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
+              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
+              {"filterName": "placeId", "filterValues": [PLACE_ID]},
+              {"filterName": "query", "filterValues": [QUERY]},
+              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
+              {"filterName": "screenSize", "filterValues": ["large"]},
+              {"filterName": "searchMode", "filterValues": ["regular_search"]},
+              {"filterName": "tabId", "filterValues": ["home_tab"]},
+              {"filterName": "version", "filterValues": ["1.8.3"]},
+          ]
+          test_request("placeId + query SANS guestFavorite", params_no_gf)
 
-          print("=" * 80)
-          print("🔍 TEST GRAPHQL STAYS SEARCH")
-          print("=" * 80)
-          
-          print("\n📤 Payload envoyé:")
-          print(json.dumps(payload, indent=2)[:2000])
-          
-          print("\n" + "-" * 40)
-          print("📡 Envoi de la requête...")
-          
-          try:
-              response = curl_requests.post(
-                  f"https://www.airbnb.com/api/v3/StaysSearch/{GRAPHQL_HASH}?operationName=StaysSearch&locale=en&currency=AED",
-                  headers=headers,
-                  json=payload,
-                  impersonate="chrome120",
-                  timeout=30
-              )
-              
-              print(f"\n📊 Status: {response.status_code}")
-              
-              data = response.json()
-              
-              if "errors" in data:
-                  print(f"\n❌ ERREURS GraphQL:")
-                  print(json.dumps(data["errors"], indent=2))
-              else:
-                  print(f"\n✅ Succès!")
-                  
-                  # Explorer la structure
-                  print("\n📂 STRUCTURE DE LA RÉPONSE:")
-                  
-                  def explore_structure(obj, prefix="", depth=0):
-                      if depth > 4:
-                          return
-                      if isinstance(obj, dict):
-                          for key in list(obj.keys())[:15]:
-                              val = obj[key]
-                              if isinstance(val, dict):
-                                  print(f"{prefix}{key}: {{...}} ({len(val)} keys)")
-                                  explore_structure(val, prefix + "  ", depth + 1)
-                              elif isinstance(val, list):
-                                  print(f"{prefix}{key}: [...] ({len(val)} items)")
-                                  if val and depth < 3:
-                                      explore_structure(val[0], prefix + "  [0].", depth + 1)
-                              else:
-                                  val_str = str(val)[:50] if val else "None"
-                                  print(f"{prefix}{key}: {val_str}")
-                  
-                  explore_structure(data)
-                  
-                  # Chercher les listings dans différents chemins possibles
-                  print("\n" + "-" * 40)
-                  print("🔍 RECHERCHE DES LISTINGS:")
-                  
-                  stays_search = data.get("data", {}).get("presentation", {}).get("staysSearch", {})
-                  results = stays_search.get("results", {})
-                  search_results = results.get("searchResults", [])
-                  
-                  print(f"   searchResults count: {len(search_results)}")
-                  
-                  if search_results:
-                      print(f"\n   Premier résultat (clés): {list(search_results[0].keys())}")
-                      print(f"\n   Premier résultat complet:")
-                      print(json.dumps(search_results[0], indent=2, default=str)[:3000])
-                  
-          except Exception as e:
-              print(f"\n❌ Exception: {e}")
-              import traceback
-              traceback.print_exc()
+          # ============================================================
+          # TEST 5: Minimal avec placeId + guestFavorite
+          # ============================================================
+          params_minimal = [
+              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
+              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
+              {"filterName": "guestFavorite", "filterValues": ["true"]},
+              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
+              {"filterName": "placeId", "filterValues": [PLACE_ID]},
+              {"filterName": "query", "filterValues": [QUERY]},
+              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
+              {"filterName": "tabId", "filterValues": ["home_tab"]},
+          ]
+          test_request("MINIMAL (placeId + query + guestFavorite)", params_minimal)
 
-          print("\n" + "=" * 80)
-          print("🎉 FIN DU TEST")
-          print("=" * 80)
+          print("\n" + "="*60)
+          print("🎉 FIN DES TESTS")
+          print("="*60)
           EOF
