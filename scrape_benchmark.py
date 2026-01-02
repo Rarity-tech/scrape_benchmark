@@ -413,21 +413,30 @@ def extract_ratings_and_badges(details):
     if room_type is not None:
         result["room_type"] = str(room_type)
     
-    bedrooms = details.get("bedrooms")
-    if bedrooms is not None:
-        result["bedrooms"] = str(bedrooms)
-    
-    beds = details.get("beds")
-    if beds is not None:
-        result["beds"] = str(beds)
-    
-    bathrooms = details.get("bathrooms")
-    if bathrooms is not None:
-        result["bathrooms"] = str(bathrooms)
-    
     person_capacity = details.get("person_capacity")
     if person_capacity is not None:
         result["person_capacity"] = str(person_capacity)
+    
+    # bedrooms, beds, bathrooms sont dans sub_description.items
+    # Format: ["4 guests", "1 bedroom", "2 beds", "1 bath"]
+    sub_desc = details.get("sub_description", {})
+    if sub_desc and isinstance(sub_desc, dict):
+        items = sub_desc.get("items", [])
+        if isinstance(items, list):
+            import re
+            for item in items:
+                if isinstance(item, str):
+                    item_lower = item.lower()
+                    # Extraire le nombre
+                    match = re.match(r"(\d+)", item)
+                    if match:
+                        num = match.group(1)
+                        if "bedroom" in item_lower:
+                            result["bedrooms"] = num
+                        elif "bed" in item_lower and "bedroom" not in item_lower:
+                            result["beds"] = num
+                        elif "bath" in item_lower:
+                            result["bathrooms"] = num
     
     # ===== RATINGS =====
     rating_data = details.get("rating")
