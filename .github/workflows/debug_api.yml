@@ -129,23 +129,48 @@ jobs:
                       
                       if search_results:
                           first = search_results[0]
-                          print(f"\n   Premier résultat - TOUTES LES CLÉS:")
-                          print(f"   {list(first.keys())}")
-                          print(f"\n   Valeurs importantes:")
-                          print(f"   - propertyId: {first.get('propertyId')}")
-                          print(f"   - id: {first.get('id')}")
-                          print(f"   - listingId: {first.get('listingId')}")
-                          print(f"   - title: {first.get('title', 'N/A')[:40]}")
+                          print(f"\n   Premier résultat - EXPLORATION PROFONDE:")
                           
-                          # Chercher l'ID dans d'autres endroits
-                          listing_obj = first.get("listing", {})
-                          if listing_obj:
-                              print(f"   - listing.id: {listing_obj.get('id')}")
+                          # Chercher l'ID partout
+                          print(f"\n   TOP LEVEL:")
+                          for key in first.keys():
+                              val = first.get(key)
+                              if val is None:
+                                  print(f"   - {key}: None")
+                              elif isinstance(val, dict):
+                                  print(f"   - {key}: {{dict with {len(val)} keys}}")
+                              elif isinstance(val, list):
+                                  print(f"   - {key}: [list with {len(val)} items]")
+                              else:
+                                  print(f"   - {key}: {str(val)[:60]}")
                           
-                          # Vérifier listingParamOverrides
-                          lpo = first.get("listingParamOverrides", {})
-                          if lpo:
-                              print(f"   - listingParamOverrides: {lpo}")
+                          # Explorer listing nested
+                          print(f"\n   NESTED OBJECTS:")
+                          
+                          # demandStayListing
+                          dsl = first.get("demandStayListing", {})
+                          if dsl:
+                              print(f"   demandStayListing keys: {list(dsl.keys())[:10]}")
+                              print(f"   demandStayListing.id: {dsl.get('id')}")
+                              print(f"   demandStayListing.listingId: {dsl.get('listingId')}")
+                          
+                          # structuredContent
+                          sc = first.get("structuredContent", {})
+                          if sc:
+                              print(f"   structuredContent keys: {list(sc.keys())[:10]}")
+                          
+                          # contextualPictures - peut contenir l'ID
+                          cp = first.get("contextualPictures", [])
+                          if cp:
+                              print(f"   contextualPictures[0]: {cp[0] if cp else 'empty'}")
+                          
+                          # passportData
+                          pd = first.get("passportData", {})
+                          if pd:
+                              print(f"   passportData keys: {list(pd.keys())[:10]}")
+                              print(f"   passportData.listingId: {pd.get('listingId')}")
+                              print(f"   passportData.id: {pd.get('id')}")
+                              
                       return len(search_results)
                       
               except Exception as e:
