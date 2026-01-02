@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 =============================================================================
-AIRBNB BENCHMARK SCRAPER
+AIRBNB BENCHMARK SCRAPER - VERSION CORRIGÉE
 =============================================================================
 Scrape tous les listings d'une zone avec leurs notes détaillées et badges
 pour comparer et benchmarker les performances.
@@ -42,7 +42,7 @@ CURRENCY = os.environ.get("CURRENCY", "AED")
 # Constantes
 AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
 DELAY_BETWEEN_REQUESTS = 1.0
-DELAY_BETWEEN_DETAILS = 0.5
+DELAY_BETWEEN_DETAILS = 0.8
 
 # ==============================================================================
 # UTILITAIRES
@@ -52,8 +52,6 @@ def calculate_bounding_box(center_lat, center_lng, radius_km):
     """
     Calcule les coordonnées du rectangle (bounding box) à partir d'un point central et d'un rayon.
     """
-    # 1 degré de latitude ≈ 111 km
-    # 1 degré de longitude ≈ 111 km * cos(latitude)
     lat_offset = radius_km / 111.0
     lng_offset = radius_km / (111.0 * math.cos(math.radians(center_lat)))
     
@@ -168,7 +166,7 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
     items_offset = 0
     section_offset = 0
     page_count = 0
-    max_pages = 20  # Max ~1000 listings
+    max_pages = 20
     
     print(f"\n🔍 Recherche en cours...", flush=True)
     
@@ -230,7 +228,7 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
                                 except:
                                     pass
                         
-                        # Extraire les infos de base
+                        # Extraire les infos de base depuis la recherche
                         page_listings.append({
                             "room_id": str(room_id),
                             "name": listing_data.get("name", ""),
@@ -240,11 +238,10 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
                             "beds": listing_data.get("beds", ""),
                             "bathrooms": listing_data.get("bathrooms", ""),
                             "price": price,
+                            # Ces valeurs seront enrichies par get_details
                             "is_superhost": listing_data.get("is_superhost", False),
                             "avg_rating": listing_data.get("avg_rating", ""),
                             "reviews_count": listing_data.get("reviews_count", ""),
-                            # Badges depuis les données de recherche
-                            "guest_favorite": listing_data.get("is_guest_favorite", False),
                         })
             
             all_listings.extend(page_listings)
@@ -291,13 +288,18 @@ def get_listing_details(room_id):
         )
         return details
     except Exception as e:
-        print(f"      ⚠️ Erreur détails {room_id}: {e}", flush=True)
         return None
 
 
 def extract_ratings_and_badges(details):
     """
     Extrait les notes détaillées et badges depuis les détails du listing.
+    Structure confirmée par debug:
+    - details["rating"] = {accuracy, checking, cleanliness, communication, location, value, guest_satisfaction, review_count}
+    - details["host"] = {id, name}
+    - details["is_super_host"] = True/False
+    - details["is_guest_favorite"] = True/False
+    - details["highlights"] = [{title, subtitle, icon}, ...]
     """
     result = {
         "rating_overall": "",
@@ -310,8 +312,6 @@ def extract_ratings_and_badges(details):
         "reviews_count": "",
         "host_id": "",
         "host_name": "",
-        "host_rating": "",
-        "host_reviews_count": "",
         "is_superhost": False,
         "is_guest_favorite": False,
         "top_percent": "",
@@ -321,74 +321,103 @@ def extract_ratings_and_badges(details):
     if not details:
         return result
     
-    # Note globale
-    result["rating_overall"] = details.get("review_details_interface", {}).get("review_score", "") or details.get("avg_rating", "")
+    # ===== RATINGS =====
+    rating_data = details.get("rating")
+    if rating_data and isinstance(rating_data, dict):
+        # Convertir en string pour le CSV, gérer les valeurs numériques
+        accuracy = rating_data.get("accuracy")
+        if accuracy is not None:
+            result["rating_accuracy"] = str(accuracy)
+        
+        cleanliness = rating_data.get("cleanliness")
+        if cleanliness is not None:
+            result["rating_cleanliness"] = str(cleanliness)
+        
+        checking = rating_data.get("checking")  # Note: "checking" pas "checkin"
+        if checking is not None:
+            result["rating_checkin"] = str(checking)
+        
+        communication = rating_data.get("communication")
+        if communication is not None:
+            result["rating_communication"] = str(communication)
+        
+        location = rating_data.get("location")
+        if location is not None:
+            result["rating_location"] = str(location)
+        
+        value = rating_data.get("value")
+        if value is not None:
+            result["rating_value"] = str(value)
+        
+        guest_satisfaction = rating_data.get("guest_satisfaction")
+        if guest_satisfaction is not None:
+            result["rating_overall"] = str(guest_satisfaction)
+        
+        review_count = rating_data.get("review_count")
+        if review_count is not None:
+            result["reviews_count"] = str(review_count)
     
-    # Sous-notes
-    review_summary = details.get("review_details_interface", {}).get("review_summary", [])
-    if isinstance(review_summary, list):
-        for item in review_summary:
-            label = item.get("label", "").lower()
-            value = item.get("localizedRating", "") or item.get("value", "")
-            
-            if "accuracy" in label:
-                result["rating_accuracy"] = value
-            elif "cleanliness" in label or "clean" in label:
-                result["rating_cleanliness"] = value
-            elif "check" in label or "checkin" in label:
-                result["rating_checkin"] = value
-            elif "communication" in label:
-                result["rating_communication"] = value
-            elif "location" in label:
-                result["rating_location"] = value
-            elif "value" in label:
-                result["rating_value"] = value
+    # ===== HOST =====
+    host_data = details.get("host")
+    if host_data and isinstance(host_data, dict):
+        host_id = host_data.get("id")
+        if host_id is not None:
+            result["host_id"] = str(host_id)
+        
+        host_name = host_data.get("name")
+        if host_name is not None:
+            result["host_name"] = str(host_name)
     
-    # Nombre d'avis
-    result["reviews_count"] = details.get("visible_review_count", "") or details.get("review_count", "")
+    # ===== SUPERHOST =====
+    # Clé confirmée: "is_super_host" (avec underscore)
+    is_superhost = details.get("is_super_host")
+    if is_superhost is not None:
+        result["is_superhost"] = bool(is_superhost)
     
-    # Host info
-    host_data = details.get("host", {})
-    if isinstance(host_data, dict):
-        result["host_id"] = str(host_data.get("id", ""))
-        result["host_name"] = host_data.get("name", "") or host_data.get("first_name", "")
-        result["is_superhost"] = host_data.get("is_superhost", False)
-        result["host_rating"] = host_data.get("host_rating", "")
-        result["host_reviews_count"] = host_data.get("host_total_reviews_count", "")
+    # ===== GUEST FAVORITE =====
+    is_guest_favorite = details.get("is_guest_favorite")
+    if is_guest_favorite is not None:
+        result["is_guest_favorite"] = bool(is_guest_favorite)
     
-    # Guest Favorite
-    result["is_guest_favorite"] = details.get("is_guest_favorite", False) or details.get("guest_favorite", False)
-    
-    # Top X% - chercher dans plusieurs endroits possibles
-    highlights = details.get("listing_highlights", [])
-    if isinstance(highlights, list):
-        for highlight in highlights:
-            text = str(highlight).lower()
-            if "top 1%" in text:
-                result["top_percent"] = "1"
-            elif "top 5%" in text:
-                result["top_percent"] = "5"
-            elif "top 10%" in text:
-                result["top_percent"] = "10"
-    
-    # Badges divers
+    # ===== TOP X% et autres badges =====
+    highlights = details.get("highlights", [])
     badges_list = []
-    if result["is_superhost"]:
-        badges_list.append("Superhost")
-    if result["is_guest_favorite"]:
-        badges_list.append("Guest Favorite")
-    if result["top_percent"]:
-        badges_list.append(f"Top {result['top_percent']}%")
     
-    # Chercher d'autres badges dans les highlights
     if isinstance(highlights, list):
         for highlight in highlights:
             if isinstance(highlight, dict):
                 title = highlight.get("title", "")
-                if title and title not in badges_list:
+                subtitle = highlight.get("subtitle", "")
+                
+                # Chercher Top X%
+                combined = f"{title} {subtitle}".lower()
+                if "top 1%" in combined:
+                    result["top_percent"] = "1"
+                elif "top 5%" in combined:
+                    result["top_percent"] = "5"
+                elif "top 10%" in combined:
+                    result["top_percent"] = "10"
+                
+                # Ajouter comme badge si pertinent (mais pas tous les highlights)
+                if title and any(keyword in title.lower() for keyword in ["superhost", "top", "favorite", "loved"]):
                     badges_list.append(title)
     
-    result["badges"] = " | ".join(badges_list)
+    # Construire la liste des badges
+    final_badges = []
+    if result["is_superhost"]:
+        final_badges.append("Superhost")
+    if result["is_guest_favorite"]:
+        final_badges.append("Guest Favorite")
+    if result["top_percent"]:
+        final_badges.append(f"Top {result['top_percent']}%")
+    
+    # Ajouter les highlights uniques qui ne sont pas déjà présents
+    for badge in badges_list:
+        # Éviter les doublons (ex: "Myriam - Kaori Stays is a Superhost" si déjà "Superhost")
+        if not any(existing.lower() in badge.lower() or badge.lower() in existing.lower() for existing in final_badges):
+            final_badges.append(badge)
+    
+    result["badges"] = " | ".join(final_badges)
     
     return result
 
@@ -421,8 +450,6 @@ def export_to_csv(listings, filename):
         "reviews_count",
         "host_id",
         "host_name",
-        "host_rating",
-        "host_reviews_count",
         "is_superhost",
         "is_guest_favorite",
         "top_percent",
@@ -437,7 +464,7 @@ def export_to_csv(listings, filename):
             row = {
                 "room_id": listing.get("room_id", ""),
                 "url": f"https://www.airbnb.com/rooms/{listing.get('room_id', '')}",
-                "title": listing.get("name", ""),
+                "title": listing.get("name", "") or listing.get("title", ""),
                 "room_type": listing.get("room_type", ""),
                 "bedrooms": listing.get("bedrooms", ""),
                 "beds": listing.get("beds", ""),
@@ -454,8 +481,6 @@ def export_to_csv(listings, filename):
                 "reviews_count": listing.get("reviews_count", ""),
                 "host_id": listing.get("host_id", ""),
                 "host_name": listing.get("host_name", ""),
-                "host_rating": listing.get("host_rating", ""),
-                "host_reviews_count": listing.get("host_reviews_count", ""),
                 "is_superhost": listing.get("is_superhost", False),
                 "is_guest_favorite": listing.get("is_guest_favorite", False),
                 "top_percent": listing.get("top_percent", ""),
@@ -532,24 +557,36 @@ def main():
     print("-" * 40)
     print(f"   {len(listings)} listings à traiter...\n")
     
+    success_count = 0
+    error_count = 0
+    
     for idx, listing in enumerate(listings, start=1):
         room_id = listing["room_id"]
         print(f"   [{idx}/{len(listings)}] Room {room_id}...", end=" ", flush=True)
         
-        details = get_listing_details(room_id)
-        
-        if details:
-            ratings = extract_ratings_and_badges(details)
-            listing.update(ratings)
+        try:
+            details = get_listing_details(room_id)
             
-            # Afficher un résumé
-            rating = listing.get("rating_overall", "N/A")
-            badges = listing.get("badges", "")
-            print(f"✓ Rating: {rating} | {badges or 'Aucun badge'}", flush=True)
-        else:
-            print("⚠️ Pas de détails", flush=True)
+            if details:
+                ratings = extract_ratings_and_badges(details)
+                listing.update(ratings)
+                success_count += 1
+                
+                # Afficher un résumé
+                rating = listing.get("rating_overall", "N/A")
+                badges = listing.get("badges", "")
+                print(f"✓ Rating: {rating} | {badges or 'Aucun badge'}", flush=True)
+            else:
+                error_count += 1
+                print("⚠️ Pas de détails", flush=True)
+                
+        except Exception as e:
+            error_count += 1
+            print(f"❌ Erreur: {str(e)[:50]}", flush=True)
         
         time.sleep(DELAY_BETWEEN_DETAILS)
+    
+    print(f"\n   ✅ Succès: {success_count} | ❌ Erreurs: {error_count}")
     
     # Phase 3: Export
     print("\n📊 PHASE 3: EXPORT CSV")
@@ -567,18 +604,28 @@ def main():
     # Stats
     superhosts = sum(1 for l in listings if l.get("is_superhost"))
     guest_favorites = sum(1 for l in listings if l.get("is_guest_favorite"))
-    top_1 = sum(1 for l in listings if l.get("top_percent") == "1")
-    top_5 = sum(1 for l in listings if l.get("top_percent") == "5")
-    top_10 = sum(1 for l in listings if l.get("top_percent") == "10")
+    top_1 = sum(1 for l in listings if str(l.get("top_percent", "")) == "1")
+    top_5 = sum(1 for l in listings if str(l.get("top_percent", "")) == "5")
+    top_10 = sum(1 for l in listings if str(l.get("top_percent", "")) == "10")
     
-    ratings = [float(l.get("rating_overall", 0)) for l in listings if l.get("rating_overall")]
+    # Calculer la moyenne des ratings
+    ratings = []
+    for l in listings:
+        r = l.get("rating_overall")
+        if r and r != "":
+            try:
+                ratings.append(float(r))
+            except:
+                pass
+    
     avg_rating = sum(ratings) / len(ratings) if ratings else 0
     
     print(f"\n📊 STATISTIQUES:")
     print(f"   Total listings: {len(listings)}")
-    print(f"   Note moyenne: {avg_rating:.2f}")
-    print(f"   Superhosts: {superhosts} ({100*superhosts/len(listings):.1f}%)")
-    print(f"   Guest Favorites: {guest_favorites} ({100*guest_favorites/len(listings):.1f}%)")
+    print(f"   Avec détails: {success_count}")
+    print(f"   Note moyenne: {avg_rating:.2f}" if avg_rating > 0 else "   Note moyenne: N/A")
+    print(f"   Superhosts: {superhosts} ({100*superhosts/len(listings):.1f}%)" if listings else "")
+    print(f"   Guest Favorites: {guest_favorites} ({100*guest_favorites/len(listings):.1f}%)" if listings else "")
     print(f"   Top 1%: {top_1}")
     print(f"   Top 5%: {top_5}")
     print(f"   Top 10%: {top_10}")
