@@ -1,4 +1,4 @@
-name: Debug Guest Favorite Filter
+name: Debug Guest Favorite Filter V2
 
 on:
   workflow_dispatch:
@@ -17,44 +17,38 @@ jobs:
       - name: Install dependencies
         run: pip install curl_cffi
       
-      - name: Test different filter parameters
+      - name: Test GraphQL and other endpoints
         run: |
           python << 'EOF'
           import json
           from curl_cffi import requests as curl_requests
+          from urllib.parse import urlencode
 
           AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
 
-          # Zone Downtown Dubai
-          NE_LAT = 25.208047
-          NE_LNG = 55.286305
-          SW_LAT = 25.181020
-          SW_LNG = 55.256437
-
           headers = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               "Accept": "application/json",
+              "Accept-Language": "en-US,en;q=0.9",
               "X-Airbnb-API-Key": AIRBNB_API_KEY,
+              "Content-Type": "application/json",
           }
 
-          # Test différents paramètres pour Guest Favorite
-          test_params = [
-              {"name": "selected_filter_order[]", "value": "guest_favorite"},
-              {"name": "refinement_paths[]", "value": "/homes/guest_favorites"},
-              {"name": "search_mode", "value": "guest_favorite"},
-              {"name": "filter_by_guest_favorite", "value": "true"},
-              {"name": "guest_favorite", "value": "true"},
-              {"name": "is_guest_favorite", "value": "true"},
-              {"name": "collection_ids[]", "value": "1"},  # Possible ID for Guest Favorites
-          ]
+          print("=" * 80)
+          print("🔍 TEST GUEST FAVORITES FILTER V2")
+          print("=" * 80)
 
-          base_params = {
-              "checkin": "2025-02-01",
-              "checkout": "2025-02-05",
-              "ne_lat": str(NE_LAT),
-              "ne_lng": str(NE_LNG),
-              "sw_lat": str(SW_LAT),
-              "sw_lng": str(SW_LNG),
+          # Test 1: explore_tabs avec différents paramètres
+          print("\n📊 TEST 1: explore_tabs avec quality_tier")
+          print("-" * 40)
+          
+          params = {
+              "checkin": "2025-02-15",
+              "checkout": "2025-02-20",
+              "ne_lat": "25.21",
+              "ne_lng": "55.29",
+              "sw_lat": "25.18",
+              "sw_lng": "55.26",
               "search_by_map": "true",
               "zoom": "14",
               "version": "1.8.3",
@@ -65,88 +59,8 @@ jobs:
               "key": AIRBNB_API_KEY,
               "refinement_paths[]": "/homes",
               "tab_id": "home_tab",
+              "quality_tier": "guest_favorite",  # Possible parameter
           }
-
-          print("=" * 80)
-          print("🔍 TEST DES PARAMÈTRES GUEST FAVORITE")
-          print("=" * 80)
-
-          # D'abord, test SANS filtre pour avoir une baseline
-          print("\n📊 TEST 0: SANS FILTRE (baseline)")
-          print("-" * 40)
-          
-          try:
-              response = curl_requests.get(
-                  "https://www.airbnb.com/api/v2/explore_tabs",
-                  params=base_params,
-                  headers=headers,
-                  impersonate="chrome120",
-                  timeout=30
-              )
-              
-              if response.status_code == 200:
-                  data = response.json()
-                  count = 0
-                  for tab in data.get("explore_tabs", []):
-                      for section in tab.get("sections", []):
-                          count += len(section.get("listings", []))
-                  print(f"   ✅ {count} listings trouvés")
-              else:
-                  print(f"   ❌ HTTP {response.status_code}")
-          except Exception as e:
-              print(f"   ❌ Erreur: {e}")
-
-          # Test chaque paramètre
-          for i, test in enumerate(test_params, 1):
-              print(f"\n📊 TEST {i}: {test['name']}={test['value']}")
-              print("-" * 40)
-              
-              params = base_params.copy()
-              params[test['name']] = test['value']
-              
-              try:
-                  response = curl_requests.get(
-                      "https://www.airbnb.com/api/v2/explore_tabs",
-                      params=params,
-                      headers=headers,
-                      impersonate="chrome120",
-                      timeout=30
-                  )
-                  
-                  if response.status_code == 200:
-                      data = response.json()
-                      count = 0
-                      guest_fav_count = 0
-                      
-                      for tab in data.get("explore_tabs", []):
-                          for section in tab.get("sections", []):
-                              for listing in section.get("listings", []):
-                                  count += 1
-                                  listing_data = listing.get("listing", {})
-                                  # Vérifier si c'est un guest favorite
-                                  if listing_data.get("is_guest_favorite") or listing_data.get("guest_favorite"):
-                                      guest_fav_count += 1
-                      
-                      print(f"   ✅ {count} listings trouvés")
-                      print(f"   ⭐ {guest_fav_count} Guest Favorites détectés")
-                      
-                      # Si moins de résultats que baseline, c'est peut-être le bon filtre
-                      if count < 20 and count > 0:
-                          print(f"   🎯 POSSIBLE BON FILTRE!")
-                  else:
-                      print(f"   ❌ HTTP {response.status_code}")
-                      # Afficher un peu de la réponse pour debug
-                      print(f"   Response: {response.text[:200]}")
-              except Exception as e:
-                  print(f"   ❌ Erreur: {e}")
-
-          # Test avec refinement_paths spécial
-          print(f"\n📊 TEST SPECIAL: refinement_paths=/homes + guest_favorites filter")
-          print("-" * 40)
-          
-          params = base_params.copy()
-          params["refinement_paths[]"] = "/homes"
-          params["selected_filter_order[]"] = "guest_favorites"  # avec 's'
           
           try:
               response = curl_requests.get(
@@ -156,18 +70,197 @@ jobs:
                   impersonate="chrome120",
                   timeout=30
               )
-              
+              print(f"   Status: {response.status_code}")
               if response.status_code == 200:
                   data = response.json()
-                  count = 0
+                  count = sum(len(s.get("listings", [])) for t in data.get("explore_tabs", []) for s in t.get("sections", []))
+                  print(f"   Résultats: {count}")
+          except Exception as e:
+              print(f"   Erreur: {e}")
+
+          # Test 2: Avec home_tier
+          print("\n📊 TEST 2: explore_tabs avec home_tier=1")
+          print("-" * 40)
+          
+          params["home_tier"] = "1"
+          del params["quality_tier"]
+          
+          try:
+              response = curl_requests.get(
+                  "https://www.airbnb.com/api/v2/explore_tabs",
+                  params=params,
+                  headers=headers,
+                  impersonate="chrome120",
+                  timeout=30
+              )
+              print(f"   Status: {response.status_code}")
+              if response.status_code == 200:
+                  data = response.json()
+                  count = sum(len(s.get("listings", [])) for t in data.get("explore_tabs", []) for s in t.get("sections", []))
+                  print(f"   Résultats: {count}")
+          except Exception as e:
+              print(f"   Erreur: {e}")
+
+          # Test 3: Avec min_tier
+          print("\n📊 TEST 3: explore_tabs avec min_tier=1 (Guest Favorites tier)")
+          print("-" * 40)
+          
+          params["min_tier"] = "1"
+          del params["home_tier"]
+          
+          try:
+              response = curl_requests.get(
+                  "https://www.airbnb.com/api/v2/explore_tabs",
+                  params=params,
+                  headers=headers,
+                  impersonate="chrome120",
+                  timeout=30
+              )
+              print(f"   Status: {response.status_code}")
+              if response.status_code == 200:
+                  data = response.json()
+                  count = sum(len(s.get("listings", [])) for t in data.get("explore_tabs", []) for s in t.get("sections", []))
+                  print(f"   Résultats: {count}")
+          except Exception as e:
+              print(f"   Erreur: {e}")
+
+          # Test 4: StaysSearch GraphQL endpoint
+          print("\n📊 TEST 4: GraphQL StaysSearch avec guestFavorites filter")
+          print("-" * 40)
+          
+          graphql_query = {
+              "operationName": "StaysSearch",
+              "variables": {
+                  "request": {
+                      "metadataOnly": False,
+                      "searchType": "filter_change",
+                      "treatmentFlags": [],
+                      "rawParams": [
+                          {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
+                          {"filterName": "checkin", "filterValues": ["2025-02-15"]},
+                          {"filterName": "checkout", "filterValues": ["2025-02-20"]},
+                          {"filterName": "ne_lat", "filterValues": ["25.21"]},
+                          {"filterName": "ne_lng", "filterValues": ["55.29"]},
+                          {"filterName": "sw_lat", "filterValues": ["25.18"]},
+                          {"filterName": "sw_lng", "filterValues": ["55.26"]},
+                          {"filterName": "zoom", "filterValues": ["14"]},
+                          {"filterName": "search_by_map", "filterValues": ["true"]},
+                          {"filterName": "selected_filter_order", "filterValues": ["guest_favorites"]},
+                      ],
+                  }
+              },
+              "extensions": {
+                  "persistedQuery": {
+                      "version": 1,
+                      "sha256Hash": "placeholder"
+                  }
+              }
+          }
+          
+          try:
+              response = curl_requests.post(
+                  "https://www.airbnb.com/api/v3/StaysSearch",
+                  headers=headers,
+                  json=graphql_query,
+                  impersonate="chrome120",
+                  timeout=30
+              )
+              print(f"   Status: {response.status_code}")
+              if response.status_code == 200:
+                  print(f"   Response preview: {response.text[:500]}")
+              else:
+                  print(f"   Response: {response.text[:300]}")
+          except Exception as e:
+              print(f"   Erreur: {e}")
+
+          # Test 5: Essayer l'endpoint de recherche avec category_tag
+          print("\n📊 TEST 5: explore_tabs avec category_tag=Tag:8661")
+          print("-" * 40)
+          
+          params = {
+              "checkin": "2025-02-15",
+              "checkout": "2025-02-20",
+              "ne_lat": "25.21",
+              "ne_lng": "55.29",
+              "sw_lat": "25.18",
+              "sw_lng": "55.26",
+              "search_by_map": "true",
+              "zoom": "14",
+              "version": "1.8.3",
+              "_format": "for_explore_search_web",
+              "items_per_grid": "20",
+              "currency": "AED",
+              "locale": "en",
+              "key": AIRBNB_API_KEY,
+              "refinement_paths[]": "/homes",
+              "tab_id": "home_tab",
+              "category_tag": "Tag:8661",  # Possible Guest Favorites tag
+          }
+          
+          try:
+              response = curl_requests.get(
+                  "https://www.airbnb.com/api/v2/explore_tabs",
+                  params=params,
+                  headers=headers,
+                  impersonate="chrome120",
+                  timeout=30
+              )
+              print(f"   Status: {response.status_code}")
+              if response.status_code == 200:
+                  data = response.json()
+                  count = sum(len(s.get("listings", [])) for t in data.get("explore_tabs", []) for s in t.get("sections", []))
+                  print(f"   Résultats: {count}")
+          except Exception as e:
+              print(f"   Erreur: {e}")
+
+          # Test 6: Essayer avec superhost=true pour voir si les filtres marchent
+          print("\n📊 TEST 6: explore_tabs avec superhost=true (test de référence)")
+          print("-" * 40)
+          
+          params = {
+              "checkin": "2025-02-15",
+              "checkout": "2025-02-20",
+              "ne_lat": "25.21",
+              "ne_lng": "55.29",
+              "sw_lat": "25.18",
+              "sw_lng": "55.26",
+              "search_by_map": "true",
+              "zoom": "14",
+              "version": "1.8.3",
+              "_format": "for_explore_search_web",
+              "items_per_grid": "20",
+              "currency": "AED",
+              "locale": "en",
+              "key": AIRBNB_API_KEY,
+              "refinement_paths[]": "/homes",
+              "tab_id": "home_tab",
+              "superhost": "true",
+          }
+          
+          try:
+              response = curl_requests.get(
+                  "https://www.airbnb.com/api/v2/explore_tabs",
+                  params=params,
+                  headers=headers,
+                  impersonate="chrome120",
+                  timeout=30
+              )
+              print(f"   Status: {response.status_code}")
+              if response.status_code == 200:
+                  data = response.json()
+                  count = sum(len(s.get("listings", [])) for t in data.get("explore_tabs", []) for s in t.get("sections", []))
+                  print(f"   Résultats: {count}")
+                  
+                  # Vérifier si tous sont superhosts
+                  superhost_count = 0
                   for tab in data.get("explore_tabs", []):
                       for section in tab.get("sections", []):
-                          count += len(section.get("listings", []))
-                  print(f"   ✅ {count} listings trouvés")
-              else:
-                  print(f"   ❌ HTTP {response.status_code}")
+                          for listing in section.get("listings", []):
+                              if listing.get("listing", {}).get("is_superhost"):
+                                  superhost_count += 1
+                  print(f"   Superhosts: {superhost_count}/{count}")
           except Exception as e:
-              print(f"   ❌ Erreur: {e}")
+              print(f"   Erreur: {e}")
 
           print("\n" + "=" * 80)
           print("🎉 FIN DES TESTS")
