@@ -119,9 +119,6 @@ jobs:
               )
               
               print(f"\n📊 Status: {response.status_code}")
-              print(f"📊 Headers de réponse:")
-              for k, v in list(response.headers.items())[:10]:
-                  print(f"   {k}: {v[:50]}..." if len(str(v)) > 50 else f"   {k}: {v}")
               
               data = response.json()
               
@@ -131,19 +128,42 @@ jobs:
               else:
                   print(f"\n✅ Succès!")
                   
-                  # Compter les résultats
+                  # Explorer la structure
+                  print("\n📂 STRUCTURE DE LA RÉPONSE:")
+                  
+                  def explore_structure(obj, prefix="", depth=0):
+                      if depth > 4:
+                          return
+                      if isinstance(obj, dict):
+                          for key in list(obj.keys())[:15]:
+                              val = obj[key]
+                              if isinstance(val, dict):
+                                  print(f"{prefix}{key}: {{...}} ({len(val)} keys)")
+                                  explore_structure(val, prefix + "  ", depth + 1)
+                              elif isinstance(val, list):
+                                  print(f"{prefix}{key}: [...] ({len(val)} items)")
+                                  if val and depth < 3:
+                                      explore_structure(val[0], prefix + "  [0].", depth + 1)
+                              else:
+                                  val_str = str(val)[:50] if val else "None"
+                                  print(f"{prefix}{key}: {val_str}")
+                  
+                  explore_structure(data)
+                  
+                  # Chercher les listings dans différents chemins possibles
+                  print("\n" + "-" * 40)
+                  print("🔍 RECHERCHE DES LISTINGS:")
+                  
                   stays_search = data.get("data", {}).get("presentation", {}).get("staysSearch", {})
                   results = stays_search.get("results", {})
                   search_results = results.get("searchResults", [])
                   
-                  print(f"   Nombre de listings: {len(search_results)}")
+                  print(f"   searchResults count: {len(search_results)}")
                   
-                  # Afficher les premiers résultats
-                  for i, result in enumerate(search_results[:3]):
-                      listing = result.get("listing", {})
-                      print(f"\n   [{i+1}] {listing.get('name', 'N/A')[:50]}")
-                      print(f"       ID: {listing.get('id')}")
-                      print(f"       Rating: {listing.get('avgRating')}")
+                  if search_results:
+                      print(f"\n   Premier résultat (clés): {list(search_results[0].keys())}")
+                      print(f"\n   Premier résultat complet:")
+                      print(json.dumps(search_results[0], indent=2, default=str)[:3000])
                   
           except Exception as e:
               print(f"\n❌ Exception: {e}")
