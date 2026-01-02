@@ -120,19 +120,23 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             {"filterName": "checkin", "filterValues": [check_in]},
             {"filterName": "checkout", "filterValues": [check_out]},
             {"filterName": "datePickerType", "filterValues": ["calendar"]},
+            {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
             {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-            {"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]},
-            {"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]},
-            {"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]},
-            {"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]},
+            {"filterName": "priceFilterInputType", "filterValues": ["2"]},
             {"filterName": "refinementPaths", "filterValues": ["/homes"]},
             {"filterName": "screenSize", "filterValues": ["large"]},
-            {"filterName": "searchByMap", "filterValues": ["true"]},
             {"filterName": "searchMode", "filterValues": ["regular_search"]},
             {"filterName": "tabId", "filterValues": ["home_tab"]},
             {"filterName": "version", "filterValues": ["1.8.3"]},
-            {"filterName": "zoom", "filterValues": [str(zoom)]},
         ]
+        
+        # Utiliser les coordonnées (bounding box)
+        params.append({"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]})
+        params.append({"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]})
+        params.append({"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]})
+        params.append({"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]})
+        params.append({"filterName": "searchByMap", "filterValues": ["true"]})
+        params.append({"filterName": "zoomLevel", "filterValues": [str(zoom)]})
         
         # Filtres optionnels
         if filters.get("adults"):
@@ -246,10 +250,8 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             search_results = results.get("searchResults", [])
             
             for result in search_results:
-                listing = result.get("listing", {})
-                pricing = result.get("pricingQuote", {})
-                
-                room_id = listing.get("id")
+                # Structure GraphQL v3 : les données sont directement dans result
+                room_id = result.get("propertyId")
                 if not room_id:
                     continue
                 
@@ -259,25 +261,44 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
                 
                 # Extraire le prix
                 price = None
-                if pricing:
-                    structured = pricing.get("structuredStayDisplayPrice", {})
-                    primary_line = structured.get("primaryLine", {})
-                    price_str = primary_line.get("price", "")
-                    # Nettoyer le prix (enlever symbole devise, espaces)
-                    if price_str:
-                        price = price_str
+                structured_price = result.get("structuredDisplayPrice", {})
+                if structured_price:
+                    primary_line = structured_price.get("primaryLine", {})
+                    # Peut être "discountedPrice" ou "price"
+                    price = primary_line.get("discountedPrice") or primary_line.get("price")
+                
+                # Extraire rating depuis avgRatingLocalized (ex: "4.98 (42)")
+                avg_rating = ""
+                reviews_count = ""
+                rating_str = result.get("avgRatingLocalized", "")
+                if rating_str:
+                    import re
+                    match = re.match(r"([\d.]+)\s*\((\d+)\)", rating_str)
+                    if match:
+                        avg_rating = match.group(1)
+                        reviews_count = match.group(2)
+                
+                # Vérifier si Guest Favorite via badges
+                is_guest_favorite_from_search = False
+                badges = result.get("badges", [])
+                for badge in badges:
+                    logging_ctx = badge.get("loggingContext", {})
+                    if logging_ctx.get("badgeType") == "GUEST_FAVORITE":
+                        is_guest_favorite_from_search = True
+                        break
                 
                 page_listings.append({
                     "room_id": str(room_id),
-                    "name": listing.get("name", ""),
-                    "room_type": listing.get("roomTypeCategory", ""),
-                    "person_capacity": listing.get("personCapacity", ""),
-                    "bedrooms": listing.get("bedrooms", ""),
-                    "beds": listing.get("beds", ""),
-                    "bathrooms": listing.get("bathrooms", ""),
+                    "name": result.get("title", "") or result.get("nameLocalized", ""),
+                    "room_type": "",  # Sera enrichi par get_details
+                    "person_capacity": "",
+                    "bedrooms": "",
+                    "beds": "",
+                    "bathrooms": "",
                     "price": price,
-                    "avg_rating": listing.get("avgRating", ""),
-                    "reviews_count": listing.get("reviewsCount", ""),
+                    "avg_rating": avg_rating,
+                    "reviews_count": reviews_count,
+                    "is_guest_favorite_search": is_guest_favorite_from_search,
                 })
             
             all_listings.extend(page_listings)
