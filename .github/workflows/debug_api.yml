@@ -1,13 +1,7 @@
-name: Debug API Response
+name: Debug Guest Favorite Filter
 
 on:
   workflow_dispatch:
-    inputs:
-      room_id:
-        description: 'Room ID à tester'
-        required: true
-        type: string
-        default: '1568035193532843456'
 
 jobs:
   debug:
@@ -21,91 +15,161 @@ jobs:
           python-version: "3.11"
       
       - name: Install dependencies
-        run: |
-          pip install pyairbnb==2.1.1 curl_cffi
+        run: pip install curl_cffi
       
-      - name: Debug API response
-        env:
-          ROOM_ID: ${{ inputs.room_id }}
+      - name: Test different filter parameters
         run: |
           python << 'EOF'
-          import os
           import json
-          import pyairbnb
+          from curl_cffi import requests as curl_requests
 
-          ROOM_ID = os.environ.get("ROOM_ID", "1568035193532843456")
+          AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
+
+          # Zone Downtown Dubai
+          NE_LAT = 25.208047
+          NE_LNG = 55.286305
+          SW_LAT = 25.181020
+          SW_LNG = 55.256437
+
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              "Accept": "application/json",
+              "X-Airbnb-API-Key": AIRBNB_API_KEY,
+          }
+
+          # Test différents paramètres pour Guest Favorite
+          test_params = [
+              {"name": "selected_filter_order[]", "value": "guest_favorite"},
+              {"name": "refinement_paths[]", "value": "/homes/guest_favorites"},
+              {"name": "search_mode", "value": "guest_favorite"},
+              {"name": "filter_by_guest_favorite", "value": "true"},
+              {"name": "guest_favorite", "value": "true"},
+              {"name": "is_guest_favorite", "value": "true"},
+              {"name": "collection_ids[]", "value": "1"},  # Possible ID for Guest Favorites
+          ]
+
+          base_params = {
+              "checkin": "2025-02-01",
+              "checkout": "2025-02-05",
+              "ne_lat": str(NE_LAT),
+              "ne_lng": str(NE_LNG),
+              "sw_lat": str(SW_LAT),
+              "sw_lng": str(SW_LNG),
+              "search_by_map": "true",
+              "zoom": "14",
+              "version": "1.8.3",
+              "_format": "for_explore_search_web",
+              "items_per_grid": "20",
+              "currency": "AED",
+              "locale": "en",
+              "key": AIRBNB_API_KEY,
+              "refinement_paths[]": "/homes",
+              "tab_id": "home_tab",
+          }
 
           print("=" * 80)
-          print(f"🔍 DEBUG: pyairbnb.get_details() pour room_id={ROOM_ID}")
+          print("🔍 TEST DES PARAMÈTRES GUEST FAVORITE")
           print("=" * 80)
 
+          # D'abord, test SANS filtre pour avoir une baseline
+          print("\n📊 TEST 0: SANS FILTRE (baseline)")
+          print("-" * 40)
+          
           try:
-              details = pyairbnb.get_details(
-                  room_id=ROOM_ID,
-                  currency="AED",
-                  proxy_url="",
-                  language="en",
+              response = curl_requests.get(
+                  "https://www.airbnb.com/api/v2/explore_tabs",
+                  params=base_params,
+                  headers=headers,
+                  impersonate="chrome120",
+                  timeout=30
               )
               
-              if details:
-                  print(f"\n✅ Données reçues!")
-                  print(f"\n📋 TYPE: {type(details)}")
-                  
-                  if isinstance(details, dict):
-                      print(f"\n📋 TOUTES LES CLÉS ({len(details)} clés):")
-                      print("-" * 40)
-                      for key in sorted(details.keys()):
-                          value = details[key]
-                          value_type = type(value).__name__
-                          if isinstance(value, (str, int, float, bool)):
-                              preview = str(value)[:100]
-                              print(f"  {key}: {preview} ({value_type})")
-                          elif isinstance(value, dict):
-                              print(f"  {key}: {{...}} ({len(value)} clés: {list(value.keys())[:5]})")
-                          elif isinstance(value, list):
-                              print(f"  {key}: [...] ({len(value)} éléments)")
-                          else:
-                              print(f"  {key}: {value_type}")
-                      
-                      # Afficher le contenu de "rating" si existe
-                      if "rating" in details:
-                          print(f"\n📊 CONTENU DE details['rating']:")
-                          print("-" * 40)
-                          print(json.dumps(details["rating"], indent=2, default=str))
-                      
-                      # Afficher le contenu de "host" si existe
-                      if "host" in details:
-                          print(f"\n👤 CONTENU DE details['host']:")
-                          print("-" * 40)
-                          print(json.dumps(details["host"], indent=2, default=str))
-                      
-                      # Afficher highlights si existe
-                      if "highlights" in details:
-                          print(f"\n🏆 CONTENU DE details['highlights']:")
-                          print("-" * 40)
-                          print(json.dumps(details["highlights"], indent=2, default=str))
-                      
-                      # Chercher is_super_host et is_guest_favorite
-                      print(f"\n🔍 BADGES:")
-                      print("-" * 40)
-                      print(f"  is_super_host: {details.get('is_super_host', 'NON TROUVÉ')}")
-                      print(f"  is_superhost: {details.get('is_superhost', 'NON TROUVÉ')}")
-                      print(f"  is_guest_favorite: {details.get('is_guest_favorite', 'NON TROUVÉ')}")
-                      
-                      # Afficher le JSON complet (tronqué)
-                      print(f"\n📄 JSON COMPLET (premiers 8000 chars):")
-                      print("-" * 40)
-                      full_json = json.dumps(details, indent=2, default=str)
-                      print(full_json[:8000])
-                      if len(full_json) > 8000:
-                          print(f"\n... (tronqué, total: {len(full_json)} chars)")
-                  else:
-                      print(f"Données brutes: {details}")
+              if response.status_code == 200:
+                  data = response.json()
+                  count = 0
+                  for tab in data.get("explore_tabs", []):
+                      for section in tab.get("sections", []):
+                          count += len(section.get("listings", []))
+                  print(f"   ✅ {count} listings trouvés")
               else:
-                  print("❌ Aucune donnée retournée (None)")
-                  
+                  print(f"   ❌ HTTP {response.status_code}")
           except Exception as e:
-              print(f"❌ Erreur: {e}")
-              import traceback
-              traceback.print_exc()
+              print(f"   ❌ Erreur: {e}")
+
+          # Test chaque paramètre
+          for i, test in enumerate(test_params, 1):
+              print(f"\n📊 TEST {i}: {test['name']}={test['value']}")
+              print("-" * 40)
+              
+              params = base_params.copy()
+              params[test['name']] = test['value']
+              
+              try:
+                  response = curl_requests.get(
+                      "https://www.airbnb.com/api/v2/explore_tabs",
+                      params=params,
+                      headers=headers,
+                      impersonate="chrome120",
+                      timeout=30
+                  )
+                  
+                  if response.status_code == 200:
+                      data = response.json()
+                      count = 0
+                      guest_fav_count = 0
+                      
+                      for tab in data.get("explore_tabs", []):
+                          for section in tab.get("sections", []):
+                              for listing in section.get("listings", []):
+                                  count += 1
+                                  listing_data = listing.get("listing", {})
+                                  # Vérifier si c'est un guest favorite
+                                  if listing_data.get("is_guest_favorite") or listing_data.get("guest_favorite"):
+                                      guest_fav_count += 1
+                      
+                      print(f"   ✅ {count} listings trouvés")
+                      print(f"   ⭐ {guest_fav_count} Guest Favorites détectés")
+                      
+                      # Si moins de résultats que baseline, c'est peut-être le bon filtre
+                      if count < 20 and count > 0:
+                          print(f"   🎯 POSSIBLE BON FILTRE!")
+                  else:
+                      print(f"   ❌ HTTP {response.status_code}")
+                      # Afficher un peu de la réponse pour debug
+                      print(f"   Response: {response.text[:200]}")
+              except Exception as e:
+                  print(f"   ❌ Erreur: {e}")
+
+          # Test avec refinement_paths spécial
+          print(f"\n📊 TEST SPECIAL: refinement_paths=/homes + guest_favorites filter")
+          print("-" * 40)
+          
+          params = base_params.copy()
+          params["refinement_paths[]"] = "/homes"
+          params["selected_filter_order[]"] = "guest_favorites"  # avec 's'
+          
+          try:
+              response = curl_requests.get(
+                  "https://www.airbnb.com/api/v2/explore_tabs",
+                  params=params,
+                  headers=headers,
+                  impersonate="chrome120",
+                  timeout=30
+              )
+              
+              if response.status_code == 200:
+                  data = response.json()
+                  count = 0
+                  for tab in data.get("explore_tabs", []):
+                      for section in tab.get("sections", []):
+                          count += len(section.get("listings", []))
+                  print(f"   ✅ {count} listings trouvés")
+              else:
+                  print(f"   ❌ HTTP {response.status_code}")
+          except Exception as e:
+              print(f"   ❌ Erreur: {e}")
+
+          print("\n" + "=" * 80)
+          print("🎉 FIN DES TESTS")
+          print("=" * 80)
           EOF
