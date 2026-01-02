@@ -40,6 +40,18 @@ on:
         type: string
         default: ''
       
+      # ===== FILTRES LOGEMENTS EXCEPTIONNELS =====
+      guest_favorite:
+        description: 'Coup de cœur voyageurs uniquement (true / vide)'
+        required: false
+        type: string
+        default: ''
+      luxe:
+        description: 'Logements Luxe uniquement (true / vide)'
+        required: false
+        type: string
+        default: ''
+      
       # ===== DATES =====
       days_from_now:
         description: 'Check-in dans X jours (ex: 7)'
@@ -89,6 +101,8 @@ jobs:
           MIN_BEDROOMS: ${{ inputs.min_bedrooms }}
           MAX_BEDROOMS: ${{ inputs.max_bedrooms }}
           GUESTS: ${{ inputs.guests }}
+          GUEST_FAVORITE: ${{ inputs.guest_favorite }}
+          LUXE: ${{ inputs.luxe }}
           DAYS_FROM_NOW: ${{ inputs.days_from_now }}
           STAY_DURATION: ${{ inputs.stay_duration }}
           CURRENCY: ${{ inputs.currency }}
