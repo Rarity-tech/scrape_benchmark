@@ -31,6 +31,8 @@ ROOM_TYPE = os.environ.get("ROOM_TYPE", "").strip()
 MIN_BEDROOMS = os.environ.get("MIN_BEDROOMS", "").strip()
 MAX_BEDROOMS = os.environ.get("MAX_BEDROOMS", "").strip()
 GUESTS = os.environ.get("GUESTS", "").strip()
+GUEST_FAVORITE = os.environ.get("GUEST_FAVORITE", "").strip().lower()
+LUXE = os.environ.get("LUXE", "").strip().lower()
 
 # Dates
 DAYS_FROM_NOW = int(os.environ.get("DAYS_FROM_NOW", "7"))
@@ -154,6 +156,14 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
     
     if filters.get("max_bedrooms"):
         base_params["max_bedrooms"] = str(filters["max_bedrooms"])
+    
+    # Filtre Coup de cœur voyageurs (Guest Favorite)
+    if filters.get("guest_favorite"):
+        base_params["selected_filter_order[]"] = "guest_favorite"
+    
+    # Filtre Luxe
+    if filters.get("luxe"):
+        base_params["l2_property_type_ids[]"] = "8"  # Luxe category ID
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -520,6 +530,10 @@ def main():
         filters["min_bedrooms"] = int(MIN_BEDROOMS)
     if MAX_BEDROOMS:
         filters["max_bedrooms"] = int(MAX_BEDROOMS)
+    if GUEST_FAVORITE == "true":
+        filters["guest_favorite"] = True
+    if LUXE == "true":
+        filters["luxe"] = True
     
     # Afficher la configuration
     print(f"\n📍 ZONE:")
@@ -538,6 +552,8 @@ def main():
     print(f"   Type: {ROOM_TYPE or '(tous)'}")
     print(f"   Chambres: {MIN_BEDROOMS or '?'} - {MAX_BEDROOMS or '?'}")
     print(f"   Voyageurs: {GUESTS or '(tous)'}")
+    print(f"   Coup de cœur voyageurs: {'✅ Oui' if GUEST_FAVORITE == 'true' else '(non)'}")
+    print(f"   Luxe: {'✅ Oui' if LUXE == 'true' else '(non)'}")
     print(f"   Devise: {CURRENCY}")
     
     print("=" * 80)
