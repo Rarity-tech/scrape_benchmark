@@ -1,0 +1,111 @@
+name: Debug API Response
+
+on:
+  workflow_dispatch:
+    inputs:
+      room_id:
+        description: 'Room ID à tester'
+        required: true
+        type: string
+        default: '1568035193532843456'
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          pip install pyairbnb==2.1.1 curl_cffi
+      
+      - name: Debug API response
+        env:
+          ROOM_ID: ${{ inputs.room_id }}
+        run: |
+          python << 'EOF'
+          import os
+          import json
+          import pyairbnb
+
+          ROOM_ID = os.environ.get("ROOM_ID", "1568035193532843456")
+
+          print("=" * 80)
+          print(f"🔍 DEBUG: pyairbnb.get_details() pour room_id={ROOM_ID}")
+          print("=" * 80)
+
+          try:
+              details = pyairbnb.get_details(
+                  room_id=ROOM_ID,
+                  currency="AED",
+                  proxy_url="",
+                  language="en",
+              )
+              
+              if details:
+                  print(f"\n✅ Données reçues!")
+                  print(f"\n📋 TYPE: {type(details)}")
+                  
+                  if isinstance(details, dict):
+                      print(f"\n📋 TOUTES LES CLÉS ({len(details)} clés):")
+                      print("-" * 40)
+                      for key in sorted(details.keys()):
+                          value = details[key]
+                          value_type = type(value).__name__
+                          if isinstance(value, (str, int, float, bool)):
+                              preview = str(value)[:100]
+                              print(f"  {key}: {preview} ({value_type})")
+                          elif isinstance(value, dict):
+                              print(f"  {key}: {{...}} ({len(value)} clés: {list(value.keys())[:5]})")
+                          elif isinstance(value, list):
+                              print(f"  {key}: [...] ({len(value)} éléments)")
+                          else:
+                              print(f"  {key}: {value_type}")
+                      
+                      # Afficher le contenu de "rating" si existe
+                      if "rating" in details:
+                          print(f"\n📊 CONTENU DE details['rating']:")
+                          print("-" * 40)
+                          print(json.dumps(details["rating"], indent=2, default=str))
+                      
+                      # Afficher le contenu de "host" si existe
+                      if "host" in details:
+                          print(f"\n👤 CONTENU DE details['host']:")
+                          print("-" * 40)
+                          print(json.dumps(details["host"], indent=2, default=str))
+                      
+                      # Afficher highlights si existe
+                      if "highlights" in details:
+                          print(f"\n🏆 CONTENU DE details['highlights']:")
+                          print("-" * 40)
+                          print(json.dumps(details["highlights"], indent=2, default=str))
+                      
+                      # Chercher is_super_host et is_guest_favorite
+                      print(f"\n🔍 BADGES:")
+                      print("-" * 40)
+                      print(f"  is_super_host: {details.get('is_super_host', 'NON TROUVÉ')}")
+                      print(f"  is_superhost: {details.get('is_superhost', 'NON TROUVÉ')}")
+                      print(f"  is_guest_favorite: {details.get('is_guest_favorite', 'NON TROUVÉ')}")
+                      
+                      # Afficher le JSON complet (tronqué)
+                      print(f"\n📄 JSON COMPLET (premiers 8000 chars):")
+                      print("-" * 40)
+                      full_json = json.dumps(details, indent=2, default=str)
+                      print(full_json[:8000])
+                      if len(full_json) > 8000:
+                          print(f"\n... (tronqué, total: {len(full_json)} chars)")
+                  else:
+                      print(f"Données brutes: {details}")
+              else:
+                  print("❌ Aucune donnée retournée (None)")
+                  
+          except Exception as e:
+              print(f"❌ Erreur: {e}")
+              import traceback
+              traceback.print_exc()
+          EOF
