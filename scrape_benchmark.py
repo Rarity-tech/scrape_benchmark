@@ -94,165 +94,191 @@ def calculate_zoom_from_radius(radius_km):
 
 def search_listings(check_in, check_out, bounds, zoom, filters):
     """
-    Recherche Airbnb avec pagination complète et filtres.
+    Recherche Airbnb avec l'API GraphQL v3 StaysSearch.
+    Supporte le filtre Guest Favorite natif.
     """
-    url = "https://www.airbnb.com/api/v2/explore_tabs"
     
-    # Paramètres de base
-    base_params = {
-        # Dates
-        "checkin": check_in,
-        "checkout": check_out,
-        
-        # Coordonnées
-        "ne_lat": str(bounds["ne_lat"]),
-        "ne_lng": str(bounds["ne_lng"]),
-        "sw_lat": str(bounds["sw_lat"]),
-        "sw_lng": str(bounds["sw_lng"]),
-        "search_by_map": "true",
-        "zoom": str(zoom),
-        
-        # Paramètres de recherche
-        "version": "1.8.3",
-        "satori_version": "1.2.0",
-        "_format": "for_explore_search_web",
-        "items_per_grid": "50",
-        "screen_size": "large",
-        
-        # Autres
-        "currency": CURRENCY,
-        "locale": "en",
-        "key": AIRBNB_API_KEY,
-        "timezone_offset": "240",
-        
-        # Flags
-        "is_guided_search": "true",
-        "is_standard_search": "true",
-        "refinement_paths[]": "/homes",
-        "tab_id": "home_tab",
-        "channel": "EXPLORE",
-        "date_picker_type": "calendar",
-        "source": "structured_search_input_header",
-        "search_type": "user_map_move",
-    }
-    
-    # Ajouter les filtres si présents
-    if filters.get("adults"):
-        base_params["adults"] = str(filters["adults"])
-        base_params["children"] = "0"
-        base_params["infants"] = "0"
-    
-    if filters.get("room_type"):
-        room_type_map = {
-            "entire_home": "Entire home/apt",
-            "private_room": "Private room",
-            "shared_room": "Shared room"
-        }
-        if filters["room_type"] in room_type_map:
-            base_params["room_types[]"] = room_type_map[filters["room_type"]]
-    
-    if filters.get("min_bedrooms"):
-        base_params["min_bedrooms"] = str(filters["min_bedrooms"])
-    
-    if filters.get("max_bedrooms"):
-        base_params["max_bedrooms"] = str(filters["max_bedrooms"])
-    
-    # Filtre Coup de cœur voyageurs (Guest Favorite)
-    if filters.get("guest_favorite"):
-        base_params["selected_filter_order[]"] = "guest_favorite"
-    
-    # Filtre Luxe
-    if filters.get("luxe"):
-        base_params["l2_property_type_ids[]"] = "8"  # Luxe category ID
+    # Hash SHA256 pour StaysSearch (capturé depuis le site Airbnb)
+    GRAPHQL_HASH = "d9ab2c7e443b50fdce5cdcb69d4f7e7626dbab1609c981565a6c4bdbb04546e3"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
+        "Content-Type": "application/json",
         "X-Airbnb-API-Key": AIRBNB_API_KEY,
+        "X-Airbnb-GraphQL-Platform": "web",
+        "X-Airbnb-GraphQL-Platform-Client": "minimalist-niobe",
+        "X-CSRF-Without-Token": "1",
     }
     
+    def build_raw_params(cursor=None):
+        """Construit les rawParams pour la requête GraphQL."""
+        params = [
+            {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
+            {"filterName": "channel", "filterValues": ["EXPLORE"]},
+            {"filterName": "checkin", "filterValues": [check_in]},
+            {"filterName": "checkout", "filterValues": [check_out]},
+            {"filterName": "datePickerType", "filterValues": ["calendar"]},
+            {"filterName": "itemsPerGrid", "filterValues": ["50"]},
+            {"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]},
+            {"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]},
+            {"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]},
+            {"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]},
+            {"filterName": "refinementPaths", "filterValues": ["/homes"]},
+            {"filterName": "screenSize", "filterValues": ["large"]},
+            {"filterName": "searchByMap", "filterValues": ["true"]},
+            {"filterName": "searchMode", "filterValues": ["regular_search"]},
+            {"filterName": "tabId", "filterValues": ["home_tab"]},
+            {"filterName": "version", "filterValues": ["1.8.3"]},
+            {"filterName": "zoom", "filterValues": [str(zoom)]},
+        ]
+        
+        # Filtres optionnels
+        if filters.get("adults"):
+            params.append({"filterName": "adults", "filterValues": [str(filters["adults"])]})
+        
+        if filters.get("room_type"):
+            room_type_map = {
+                "entire_home": "Entire home/apt",
+                "private_room": "Private room",
+                "shared_room": "Shared room"
+            }
+            if filters["room_type"] in room_type_map:
+                params.append({"filterName": "roomTypes", "filterValues": [room_type_map[filters["room_type"]]]})
+        
+        if filters.get("min_bedrooms"):
+            params.append({"filterName": "minBedrooms", "filterValues": [str(filters["min_bedrooms"])]})
+        
+        if filters.get("max_bedrooms"):
+            params.append({"filterName": "maxBedrooms", "filterValues": [str(filters["max_bedrooms"])]})
+        
+        # ✅ Filtre Guest Favorite (natif API GraphQL)
+        if filters.get("guest_favorite"):
+            params.append({"filterName": "guestFavorite", "filterValues": ["true"]})
+            params.append({"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]})
+        
+        # Filtre Luxe
+        if filters.get("luxe"):
+            params.append({"filterName": "luxe", "filterValues": ["true"]})
+            params.append({"filterName": "selectedFilterOrder", "filterValues": ["luxe:true"]})
+        
+        # Pagination
+        if cursor:
+            params.append({"filterName": "cursor", "filterValues": [cursor]})
+        
+        return params
+    
+    def build_graphql_payload(cursor=None):
+        """Construit le payload complet pour la requête GraphQL."""
+        raw_params = build_raw_params(cursor)
+        
+        search_request = {
+            "metadataOnly": False,
+            "requestedPageType": "STAYS_SEARCH",
+            "searchType": "filter_change" if cursor else "regular_search",
+            "treatmentFlags": [
+                "feed_map_decouple_m11_treatment",
+                "recommended_amenities_2024_treatment_b",
+                "filter_redesign_2024_treatment",
+                "filter_reordering_2024_roomtype_treatment",
+                "selected_filters_2024_treatment",
+                "recommended_filters_2024_treatment_b"
+            ],
+            "maxMapItems": 9999,
+            "rawParams": raw_params
+        }
+        
+        return {
+            "operationName": "StaysSearch",
+            "variables": {
+                "staysSearchRequest": search_request,
+                "staysMapSearchRequestV2": search_request.copy(),
+                "isLeanTreatment": False,
+                "aiSearchEnabled": False,
+                "skipExtendedSearchParams": False
+            },
+            "extensions": {
+                "persistedQuery": {
+                    "version": 1,
+                    "sha256Hash": GRAPHQL_HASH
+                }
+            }
+        }
+    
     all_listings = []
-    items_offset = 0
-    section_offset = 0
+    cursor = None
     page_count = 0
     max_pages = 20
     
-    print(f"\n🔍 Recherche en cours...", flush=True)
+    print(f"\n🔍 Recherche en cours (API GraphQL v3)...", flush=True)
     
     try:
         while page_count < max_pages:
             page_count += 1
             
-            params = base_params.copy()
-            if page_count > 1:
-                params["items_offset"] = str(items_offset)
-                params["section_offset"] = str(section_offset)
+            payload = build_graphql_payload(cursor)
             
-            response = curl_requests.get(
-                url,
-                params=params,
+            response = curl_requests.post(
+                f"https://www.airbnb.com/api/v3/StaysSearch/{GRAPHQL_HASH}?operationName=StaysSearch&locale=en&currency={CURRENCY}",
                 headers=headers,
+                json=payload,
                 impersonate="chrome120",
                 timeout=30
             )
             
             if response.status_code != 200:
-                print(f"   ⚠️ HTTP {response.status_code}", flush=True)
+                print(f"   ⚠️ HTTP {response.status_code}: {response.text[:200]}", flush=True)
                 break
             
             data = response.json()
+            
+            # Vérifier les erreurs GraphQL
+            if "errors" in data:
+                print(f"   ⚠️ Erreur GraphQL: {data['errors']}", flush=True)
+                break
+            
+            # Extraire les listings depuis la structure GraphQL
             page_listings = []
-            pagination_metadata = None
             
-            explore_tabs = data.get("explore_tabs", [])
+            stays_search = data.get("data", {}).get("presentation", {}).get("staysSearch", {})
+            results = stays_search.get("results", {})
+            search_results = results.get("searchResults", [])
             
-            for tab in explore_tabs:
-                if not pagination_metadata:
-                    pagination_metadata = tab.get("pagination_metadata", {})
+            for result in search_results:
+                listing = result.get("listing", {})
+                pricing = result.get("pricingQuote", {})
                 
-                sections = tab.get("sections", [])
-                for section in sections:
-                    listings = section.get("listings", [])
-                    
-                    for listing in listings:
-                        listing_data = listing.get("listing", {})
-                        pricing = listing.get("pricing_quote", {})
-                        
-                        room_id = listing_data.get("id")
-                        if not room_id:
-                            continue
-                        
-                        # Éviter les doublons
-                        if any(l["room_id"] == str(room_id) for l in all_listings):
-                            continue
-                        
-                        # Extraire le prix
-                        price = None
-                        if pricing:
-                            rate = pricing.get("rate", {})
-                            amount = rate.get("amount")
-                            if amount:
-                                try:
-                                    price = float(amount)
-                                except:
-                                    pass
-                        
-                        # Extraire les infos de base depuis la recherche
-                        page_listings.append({
-                            "room_id": str(room_id),
-                            "name": listing_data.get("name", ""),
-                            "room_type": listing_data.get("room_type", ""),
-                            "person_capacity": listing_data.get("person_capacity", ""),
-                            "bedrooms": listing_data.get("bedrooms", ""),
-                            "beds": listing_data.get("beds", ""),
-                            "bathrooms": listing_data.get("bathrooms", ""),
-                            "price": price,
-                            # Ces valeurs seront enrichies par get_details
-                            "is_superhost": listing_data.get("is_superhost", False),
-                            "avg_rating": listing_data.get("avg_rating", ""),
-                            "reviews_count": listing_data.get("reviews_count", ""),
-                        })
+                room_id = listing.get("id")
+                if not room_id:
+                    continue
+                
+                # Éviter les doublons
+                if any(l["room_id"] == str(room_id) for l in all_listings):
+                    continue
+                
+                # Extraire le prix
+                price = None
+                if pricing:
+                    structured = pricing.get("structuredStayDisplayPrice", {})
+                    primary_line = structured.get("primaryLine", {})
+                    price_str = primary_line.get("price", "")
+                    # Nettoyer le prix (enlever symbole devise, espaces)
+                    if price_str:
+                        price = price_str
+                
+                page_listings.append({
+                    "room_id": str(room_id),
+                    "name": listing.get("name", ""),
+                    "room_type": listing.get("roomTypeCategory", ""),
+                    "person_capacity": listing.get("personCapacity", ""),
+                    "bedrooms": listing.get("bedrooms", ""),
+                    "beds": listing.get("beds", ""),
+                    "bathrooms": listing.get("bathrooms", ""),
+                    "price": price,
+                    "avg_rating": listing.get("avgRating", ""),
+                    "reviews_count": listing.get("reviewsCount", ""),
+                })
             
             all_listings.extend(page_listings)
             
@@ -261,13 +287,12 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             if not page_listings:
                 break
             
-            has_next_page = pagination_metadata.get("has_next_page", False) if pagination_metadata else False
+            # Récupérer le cursor pour la page suivante
+            pagination_info = results.get("paginationInfo", {})
+            cursor = pagination_info.get("nextPageCursor")
             
-            if not has_next_page:
+            if not cursor:
                 break
-            
-            items_offset = pagination_metadata.get("items_offset", 0) if pagination_metadata else 0
-            section_offset = pagination_metadata.get("section_offset", 0) if pagination_metadata else 0
             
             time.sleep(DELAY_BETWEEN_REQUESTS)
         
