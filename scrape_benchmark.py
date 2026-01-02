@@ -25,6 +25,7 @@ import pyairbnb
 CENTER_LAT = float(os.environ.get("CENTER_LAT", "25.1950"))
 CENTER_LNG = float(os.environ.get("CENTER_LNG", "55.2700"))
 RADIUS_KM = float(os.environ.get("RADIUS_KM", "1.5"))
+QUERY = os.environ.get("QUERY", "").strip()  # Ex: "Downtown Dubai"
 
 # Filtres (vide = pas de filtre)
 ROOM_TYPE = os.environ.get("ROOM_TYPE", "").strip()
@@ -130,13 +131,17 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             {"filterName": "version", "filterValues": ["1.8.3"]},
         ]
         
-        # Utiliser les coordonnées (bounding box)
-        params.append({"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]})
-        params.append({"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]})
-        params.append({"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]})
-        params.append({"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]})
-        params.append({"filterName": "searchByMap", "filterValues": ["true"]})
-        params.append({"filterName": "zoomLevel", "filterValues": [str(zoom)]})
+        # Utiliser query si fourni, sinon bounding box
+        if filters.get("query"):
+            params.append({"filterName": "query", "filterValues": [filters["query"]]})
+        else:
+            # Fallback sur les coordonnées
+            params.append({"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]})
+            params.append({"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]})
+            params.append({"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]})
+            params.append({"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]})
+            params.append({"filterName": "searchByMap", "filterValues": ["true"]})
+            params.append({"filterName": "zoomLevel", "filterValues": [str(zoom)]})
         
         # Filtres optionnels
         if filters.get("adults"):
@@ -580,6 +585,8 @@ def main():
         filters["guest_favorite"] = True
     if LUXE == "true":
         filters["luxe"] = True
+    if QUERY:
+        filters["query"] = QUERY
     
     # Afficher la configuration
     print(f"\n📍 ZONE:")
@@ -600,6 +607,7 @@ def main():
     print(f"   Voyageurs: {GUESTS or '(tous)'}")
     print(f"   Coup de cœur voyageurs: {'✅ Oui' if GUEST_FAVORITE == 'true' else '(non)'}")
     print(f"   Luxe: {'✅ Oui' if LUXE == 'true' else '(non)'}")
+    print(f"   Query: {QUERY or '(coordonnées)'}")
     print(f"   Devise: {CURRENCY}")
     
     print("=" * 80)
