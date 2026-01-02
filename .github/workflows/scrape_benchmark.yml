@@ -51,6 +51,11 @@ on:
         required: false
         type: string
         default: ''
+      query:
+        description: 'Recherche textuelle (ex: Downtown Dubai) - REQUIS si guest_favorite=true'
+        required: false
+        type: string
+        default: ''
       
       # ===== DATES =====
       days_from_now:
@@ -103,6 +108,7 @@ jobs:
           GUESTS: ${{ inputs.guests }}
           GUEST_FAVORITE: ${{ inputs.guest_favorite }}
           LUXE: ${{ inputs.luxe }}
+          QUERY: ${{ inputs.query }}
           DAYS_FROM_NOW: ${{ inputs.days_from_now }}
           STAY_DURATION: ${{ inputs.stay_duration }}
           CURRENCY: ${{ inputs.currency }}
