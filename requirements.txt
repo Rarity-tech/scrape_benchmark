@@ -1,0 +1,2 @@
+pyairbnb==2.1.1
+curl_cffi>=0.6.0
