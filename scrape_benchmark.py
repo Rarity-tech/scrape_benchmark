@@ -111,6 +111,8 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
         "X-Airbnb-GraphQL-Platform": "web",
         "X-Airbnb-GraphQL-Platform-Client": "minimalist-niobe",
         "X-CSRF-Without-Token": "1",
+        "Origin": "https://www.airbnb.com",
+        "Referer": "https://www.airbnb.com/s/homes",
     }
     
     def build_raw_params(cursor=None):
@@ -123,7 +125,6 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             {"filterName": "datePickerType", "filterValues": ["calendar"]},
             {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
             {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-            {"filterName": "priceFilterInputType", "filterValues": ["2"]},
             {"filterName": "refinementPaths", "filterValues": ["/homes"]},
             {"filterName": "screenSize", "filterValues": ["large"]},
             {"filterName": "searchMode", "filterValues": ["regular_search"]},
@@ -131,17 +132,12 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             {"filterName": "version", "filterValues": ["1.8.3"]},
         ]
         
-        # Utiliser query si fourni, sinon bounding box
-        if filters.get("query"):
-            params.append({"filterName": "query", "filterValues": [filters["query"]]})
-        else:
-            # Fallback sur les coordonnées
-            params.append({"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]})
-            params.append({"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]})
-            params.append({"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]})
-            params.append({"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]})
-            params.append({"filterName": "searchByMap", "filterValues": ["true"]})
-            params.append({"filterName": "zoomLevel", "filterValues": [str(zoom)]})
+        # Toujours utiliser bounding box pour la zone
+        params.append({"filterName": "neLat", "filterValues": [str(bounds["ne_lat"])]})
+        params.append({"filterName": "neLng", "filterValues": [str(bounds["ne_lng"])]})
+        params.append({"filterName": "swLat", "filterValues": [str(bounds["sw_lat"])]})
+        params.append({"filterName": "swLng", "filterValues": [str(bounds["sw_lng"])]})
+        params.append({"filterName": "searchByMap", "filterValues": ["true"]})
         
         # Filtres optionnels
         if filters.get("adults"):
@@ -182,18 +178,24 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
         """Construit le payload complet pour la requête GraphQL."""
         raw_params = build_raw_params(cursor)
         
+        # Treatment flags exacts du navigateur
+        treatment_flags = [
+            "feed_map_decouple_m11_treatment",
+            "recommended_amenities_2024_treatment_b",
+            "filter_redesign_2024_treatment",
+            "filter_reordering_2024_roomtype_treatment",
+            "p2_category_bar_removal_treatment",
+            "selected_filters_2024_treatment",
+            "recommended_filters_2024_treatment_b",
+            "m13_search_input_phase2_treatment",
+            "m13_search_input_services_enabled"
+        ]
+        
         search_request = {
             "metadataOnly": False,
             "requestedPageType": "STAYS_SEARCH",
-            "searchType": "filter_change" if cursor else "regular_search",
-            "treatmentFlags": [
-                "feed_map_decouple_m11_treatment",
-                "recommended_amenities_2024_treatment_b",
-                "filter_redesign_2024_treatment",
-                "filter_reordering_2024_roomtype_treatment",
-                "selected_filters_2024_treatment",
-                "recommended_filters_2024_treatment_b"
-            ],
+            "searchType": "filter_change",
+            "treatmentFlags": treatment_flags,
             "maxMapItems": 9999,
             "rawParams": raw_params
         }
