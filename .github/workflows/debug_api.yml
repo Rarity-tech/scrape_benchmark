@@ -1,16 +1,12 @@
-name: Debug Compare Requests
+name: Debug PyAirbnb Details
 
 on:
   workflow_dispatch:
     inputs:
-      place_id:
-        description: 'Place ID (ex: ChIJg_kMcC9oXz4RBLnAdrBYzLU)'
+      room_id:
+        description: 'Room ID to test'
         required: true
-        default: 'ChIJg_kMcC9oXz4RBLnAdrBYzLU'
-      query:
-        description: 'Query text (ex: Downtown Dubai)'
-        required: true
-        default: 'Downtown Dubai'
+        default: '1149961985722988324'
 
 jobs:
   debug:
@@ -24,275 +20,75 @@ jobs:
           python-version: "3.11"
       
       - name: Install dependencies
-        run: pip install curl_cffi
+        run: pip install pyairbnb
       
-      - name: Compare requests
+      - name: Debug get_details structure
         env:
-          PLACE_ID: ${{ inputs.place_id }}
-          QUERY: ${{ inputs.query }}
+          ROOM_ID: ${{ inputs.room_id }}
         run: |
           python << 'EOF'
-          import json
           import os
-          from curl_cffi import requests as curl_requests
+          import json
+          import pyairbnb
 
-          AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
-          GRAPHQL_HASH = "d9ab2c7e443b50fdce5cdcb69d4f7e7626dbab1609c981565a6c4bdbb04546e3"
-          
-          PLACE_ID = os.environ.get("PLACE_ID", "ChIJg_kMcC9oXz4RBLnAdrBYzLU")
-          QUERY = os.environ.get("QUERY", "Downtown Dubai")
+          ROOM_ID = os.environ.get("ROOM_ID", "1149961985722988324")
 
-          headers = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-              "Accept": "*/*",
-              "Accept-Language": "en-US,en;q=0.9",
-              "Content-Type": "application/json",
-              "X-Airbnb-API-Key": AIRBNB_API_KEY,
-              "X-Airbnb-GraphQL-Platform": "web",
-              "X-Airbnb-GraphQL-Platform-Client": "minimalist-niobe",
-              "X-CSRF-Without-Token": "1",
-              "Origin": "https://www.airbnb.com",
-              "Referer": "https://www.airbnb.com/s/Downtown-Dubai/homes",
-          }
+          print("=" * 60)
+          print(f"🔍 DEBUG pyairbnb.get_details() pour Room {ROOM_ID}")
+          print("=" * 60)
 
-          def test_request(name, raw_params):
-              """Teste une requête GraphQL et affiche le résultat."""
-              print(f"\n{'='*60}")
-              print(f"🧪 TEST: {name}")
-              print(f"{'='*60}")
+          try:
+              details = pyairbnb.get_details(
+                  room_id=ROOM_ID,
+                  currency="AED",
+                  proxy_url="",
+                  language="en",
+              )
               
-              treatment_flags = [
-                  "feed_map_decouple_m11_treatment",
-                  "recommended_amenities_2024_treatment_b",
-                  "filter_redesign_2024_treatment",
-                  "filter_reordering_2024_roomtype_treatment",
-                  "p2_category_bar_removal_treatment",
-                  "selected_filters_2024_treatment",
-                  "recommended_filters_2024_treatment_b",
-                  "m13_search_input_phase2_treatment",
-                  "m13_search_input_services_enabled"
-              ]
+              print(f"\n✅ Succès! Type: {type(details)}")
               
-              search_request = {
-                  "metadataOnly": False,
-                  "requestedPageType": "STAYS_SEARCH",
-                  "searchType": "filter_change",
-                  "treatmentFlags": treatment_flags,
-                  "maxMapItems": 9999,
-                  "rawParams": raw_params
-              }
-              
-              payload = {
-                  "operationName": "StaysSearch",
-                  "variables": {
-                      "staysSearchRequest": search_request,
-                      "staysMapSearchRequestV2": search_request.copy(),
-                      "isLeanTreatment": False,
-                      "aiSearchEnabled": False,
-                      "skipExtendedSearchParams": False
-                  },
-                  "extensions": {
-                      "persistedQuery": {
-                          "version": 1,
-                          "sha256Hash": GRAPHQL_HASH
-                      }
-                  }
-              }
-              
-              # Afficher les paramètres clés
-              print("\n📤 rawParams clés:")
-              for p in raw_params:
-                  print(f"   {p['filterName']}: {p['filterValues']}")
-              
-              try:
-                  response = curl_requests.post(
-                      f"https://www.airbnb.com/api/v3/StaysSearch/{GRAPHQL_HASH}?operationName=StaysSearch&locale=en&currency=AED",
-                      headers=headers,
-                      json=payload,
-                      impersonate="chrome120",
-                      timeout=30
-                  )
+              if isinstance(details, dict):
+                  print(f"\n📂 TOUTES LES CLÉS ({len(details)} clés):")
+                  for key in sorted(details.keys()):
+                      val = details[key]
+                      if val is None:
+                          print(f"   {key}: None")
+                      elif isinstance(val, dict):
+                          print(f"   {key}: {{dict with {len(val)} keys}}")
+                      elif isinstance(val, list):
+                          print(f"   {key}: [list with {len(val)} items]")
+                      elif isinstance(val, str) and len(val) > 50:
+                          print(f"   {key}: '{val[:50]}...'")
+                      else:
+                          print(f"   {key}: {val}")
                   
-                  print(f"\n📊 Status: {response.status_code}")
+                  print("\n" + "-" * 40)
+                  print("🏠 INFOS LOGEMENT RECHERCHÉES:")
+                  print(f"   room_type: {details.get('room_type')}")
+                  print(f"   bedrooms: {details.get('bedrooms')}")
+                  print(f"   beds: {details.get('beds')}")
+                  print(f"   bathrooms: {details.get('bathrooms')}")
+                  print(f"   person_capacity: {details.get('person_capacity')}")
                   
-                  data = response.json()
+                  # Chercher des variantes
+                  print("\n🔎 RECHERCHE DE VARIANTES:")
+                  for key in details.keys():
+                      key_lower = key.lower()
+                      if any(word in key_lower for word in ['bed', 'bath', 'room', 'capacity', 'guest', 'person', 'sleep']):
+                          print(f"   {key}: {details[key]}")
                   
-                  if "errors" in data:
-                      print(f"❌ ERREUR: {data['errors'][0].get('message', 'Unknown')}")
-                      print(f"   Details: {json.dumps(data['errors'][0].get('extensions', {}), indent=2)[:500]}")
-                      return 0
-                  else:
-                      stays_search = data.get("data", {}).get("presentation", {}).get("staysSearch", {})
-                      results = stays_search.get("results", {})
-                      search_results = results.get("searchResults", [])
-                      print(f"✅ SUCCÈS: {len(search_results)} listings trouvés")
-                      
-                      if search_results:
-                          first = search_results[0]
-                          print(f"\n   Premier résultat - EXPLORATION PROFONDE:")
-                          
-                          # Chercher l'ID partout
-                          print(f"\n   TOP LEVEL:")
-                          for key in first.keys():
-                              val = first.get(key)
-                              if val is None:
-                                  print(f"   - {key}: None")
-                              elif isinstance(val, dict):
-                                  print(f"   - {key}: {{dict with {len(val)} keys}}")
-                              elif isinstance(val, list):
-                                  print(f"   - {key}: [list with {len(val)} items]")
-                              else:
-                                  print(f"   - {key}: {str(val)[:60]}")
-                          
-                          # Explorer listing nested
-                          print(f"\n   NESTED OBJECTS:")
-                          
-                          # demandStayListing
-                          dsl = first.get("demandStayListing", {})
-                          if dsl:
-                              print(f"   demandStayListing keys: {list(dsl.keys())[:10]}")
-                              print(f"   demandStayListing.id: {dsl.get('id')}")
-                              print(f"   demandStayListing.listingId: {dsl.get('listingId')}")
-                          
-                          # structuredContent
-                          sc = first.get("structuredContent", {})
-                          if sc:
-                              print(f"   structuredContent keys: {list(sc.keys())[:10]}")
-                          
-                          # contextualPictures - peut contenir l'ID
-                          cp = first.get("contextualPictures", [])
-                          if cp:
-                              print(f"   contextualPictures[0]: {cp[0] if cp else 'empty'}")
-                          
-                          # passportData
-                          pd = first.get("passportData", {})
-                          if pd:
-                              print(f"   passportData keys: {list(pd.keys())[:10]}")
-                              print(f"   passportData.listingId: {pd.get('listingId')}")
-                              print(f"   passportData.id: {pd.get('id')}")
-                              
-                      return len(search_results)
-                      
-              except Exception as e:
-                  print(f"❌ Exception: {e}")
-                  return 0
+                  # Afficher le JSON complet (tronqué)
+                  print("\n📄 JSON COMPLET (tronqué):")
+                  print(json.dumps(details, indent=2, default=str)[:3000])
+              else:
+                  print(f"\n⚠️ Réponse inattendue: {details}")
+                  
+          except Exception as e:
+              print(f"\n❌ Erreur: {e}")
+              import traceback
+              traceback.print_exc()
 
-          print("="*60)
-          print("🔍 COMPARAISON DES REQUÊTES GRAPHQL")
-          print("="*60)
-          print(f"\nPlace ID: {PLACE_ID}")
-          print(f"Query: {QUERY}")
-
-          # ============================================================
-          # TEST 1: Payload EXACT copié du navigateur (qui fonctionne)
-          # ============================================================
-          params_exact = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["18"]},
-              {"filterName": "placeId", "filterValues": [PLACE_ID]},
-              {"filterName": "priceFilterInputType", "filterValues": ["2"]},
-              {"filterName": "priceFilterNumNights", "filterValues": ["5"]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("EXACT (copié du navigateur)", params_exact)
-
-          # ============================================================
-          # TEST 2: Sans placeId (seulement query)
-          # ============================================================
-          params_no_placeid = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("Sans placeId (query seul)", params_no_placeid)
-
-          # ============================================================
-          # TEST 3: Avec bounding box au lieu de query
-          # ============================================================
-          params_bbox = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "neLat", "filterValues": ["25.208047"]},
-              {"filterName": "neLng", "filterValues": ["55.286305"]},
-              {"filterName": "swLat", "filterValues": ["25.181020"]},
-              {"filterName": "swLng", "filterValues": ["55.256437"]},
-              {"filterName": "searchByMap", "filterValues": ["true"]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "selectedFilterOrder", "filterValues": ["guest_favorite:true"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("Avec bounding box", params_bbox)
-
-          # ============================================================
-          # TEST 4: placeId + query SANS guestFavorite
-          # ============================================================
-          params_no_gf = [
-              {"filterName": "cdnCacheSafe", "filterValues": ["false"]},
-              {"filterName": "channel", "filterValues": ["EXPLORE"]},
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "datePickerType", "filterValues": ["calendar"]},
-              {"filterName": "flexibleTripLengths", "filterValues": ["one_week"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "placeId", "filterValues": [PLACE_ID]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "screenSize", "filterValues": ["large"]},
-              {"filterName": "searchMode", "filterValues": ["regular_search"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-              {"filterName": "version", "filterValues": ["1.8.3"]},
-          ]
-          test_request("placeId + query SANS guestFavorite", params_no_gf)
-
-          # ============================================================
-          # TEST 5: Minimal avec placeId + guestFavorite
-          # ============================================================
-          params_minimal = [
-              {"filterName": "checkin", "filterValues": ["2026-02-20"]},
-              {"filterName": "checkout", "filterValues": ["2026-02-25"]},
-              {"filterName": "guestFavorite", "filterValues": ["true"]},
-              {"filterName": "itemsPerGrid", "filterValues": ["50"]},
-              {"filterName": "placeId", "filterValues": [PLACE_ID]},
-              {"filterName": "query", "filterValues": [QUERY]},
-              {"filterName": "refinementPaths", "filterValues": ["/homes"]},
-              {"filterName": "tabId", "filterValues": ["home_tab"]},
-          ]
-          test_request("MINIMAL (placeId + query + guestFavorite)", params_minimal)
-
-          print("\n" + "="*60)
-          print("🎉 FIN DES TESTS")
-          print("="*60)
+          print("\n" + "=" * 60)
+          print("🎉 FIN DU DEBUG")
+          print("=" * 60)
           EOF
