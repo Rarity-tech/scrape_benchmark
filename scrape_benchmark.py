@@ -257,8 +257,21 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
             search_results = results.get("searchResults", [])
             
             for result in search_results:
-                # Structure GraphQL v3 : les données sont directement dans result
-                room_id = result.get("propertyId")
+                # Structure GraphQL v3 : l'ID est dans demandStayListing.id (encodé base64)
+                room_id = None
+                dsl = result.get("demandStayListing", {})
+                if dsl:
+                    encoded_id = dsl.get("id", "")
+                    if encoded_id:
+                        try:
+                            import base64
+                            decoded = base64.b64decode(encoded_id).decode("utf-8")
+                            # Format: "DemandStayListing:1149961985722988324"
+                            if ":" in decoded:
+                                room_id = decoded.split(":")[1]
+                        except:
+                            pass
+                
                 if not room_id:
                     continue
                 
@@ -284,6 +297,9 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
                     if match:
                         avg_rating = match.group(1)
                         reviews_count = match.group(2)
+                    elif re.match(r"^[\d.]+$", rating_str):
+                        # Juste un rating sans reviews count (ex: "5.0")
+                        avg_rating = rating_str
                 
                 # Vérifier si Guest Favorite via badges
                 is_guest_favorite_from_search = False
@@ -296,7 +312,7 @@ def search_listings(check_in, check_out, bounds, zoom, filters):
                 
                 page_listings.append({
                     "room_id": str(room_id),
-                    "name": result.get("title", "") or result.get("nameLocalized", ""),
+                    "name": result.get("title", "") or result.get("subtitle", ""),
                     "room_type": "",  # Sera enrichi par get_details
                     "person_capacity": "",
                     "bedrooms": "",
