@@ -372,15 +372,23 @@ def get_listing_details(room_id):
 
 def extract_ratings_and_badges(details):
     """
-    Extrait les notes détaillées et badges depuis les détails du listing.
+    Extrait les notes détaillées, badges ET infos du logement depuis les détails du listing.
     Structure confirmée par debug:
     - details["rating"] = {accuracy, checking, cleanliness, communication, location, value, guest_satisfaction, review_count}
     - details["host"] = {id, name}
     - details["is_super_host"] = True/False
     - details["is_guest_favorite"] = True/False
     - details["highlights"] = [{title, subtitle, icon}, ...]
+    - details["room_type"], details["bedrooms"], details["beds"], details["bathrooms"], details["person_capacity"]
     """
     result = {
+        # Infos logement
+        "room_type": "",
+        "bedrooms": "",
+        "beds": "",
+        "bathrooms": "",
+        "person_capacity": "",
+        # Ratings
         "rating_overall": "",
         "rating_accuracy": "",
         "rating_cleanliness": "",
@@ -399,6 +407,27 @@ def extract_ratings_and_badges(details):
     
     if not details:
         return result
+    
+    # ===== INFOS LOGEMENT =====
+    room_type = details.get("room_type")
+    if room_type is not None:
+        result["room_type"] = str(room_type)
+    
+    bedrooms = details.get("bedrooms")
+    if bedrooms is not None:
+        result["bedrooms"] = str(bedrooms)
+    
+    beds = details.get("beds")
+    if beds is not None:
+        result["beds"] = str(beds)
+    
+    bathrooms = details.get("bathrooms")
+    if bathrooms is not None:
+        result["bathrooms"] = str(bathrooms)
+    
+    person_capacity = details.get("person_capacity")
+    if person_capacity is not None:
+        result["person_capacity"] = str(person_capacity)
     
     # ===== RATINGS =====
     rating_data = details.get("rating")
