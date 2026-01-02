@@ -1,0 +1,109 @@
+name: Airbnb Benchmark Scraper
+
+on:
+  workflow_dispatch:
+    inputs:
+      # ===== ZONE GÉOGRAPHIQUE =====
+      center_lat:
+        description: 'Latitude du centre (Google Maps)'
+        required: true
+        type: string
+      center_lng:
+        description: 'Longitude du centre (Google Maps)'
+        required: true
+        type: string
+      radius_km:
+        description: 'Rayon en km (ex: 0.5, 1, 2, 5)'
+        required: true
+        type: string
+        default: '1.5'
+      
+      # ===== FILTRES LOGEMENT =====
+      room_type:
+        description: 'Type: entire_home / private_room / shared_room / (vide = tous)'
+        required: false
+        type: string
+        default: ''
+      min_bedrooms:
+        description: 'Min chambres (0=studio, 1=1BR, vide=pas de filtre)'
+        required: false
+        type: string
+        default: ''
+      max_bedrooms:
+        description: 'Max chambres (vide = pas de filtre)'
+        required: false
+        type: string
+        default: ''
+      guests:
+        description: 'Nombre de voyageurs (vide = pas de filtre)'
+        required: false
+        type: string
+        default: ''
+      
+      # ===== DATES =====
+      days_from_now:
+        description: 'Check-in dans X jours (ex: 7)'
+        required: true
+        type: string
+        default: '7'
+      stay_duration:
+        description: 'Durée du séjour en nuits (ex: 3)'
+        required: true
+        type: string
+        default: '3'
+      
+      # ===== OPTIONS =====
+      currency:
+        description: 'Devise (AED, EUR, USD...)'
+        required: false
+        type: string
+        default: 'AED'
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run benchmark scraper
+        env:
+          CENTER_LAT: ${{ inputs.center_lat }}
+          CENTER_LNG: ${{ inputs.center_lng }}
+          RADIUS_KM: ${{ inputs.radius_km }}
+          ROOM_TYPE: ${{ inputs.room_type }}
+          MIN_BEDROOMS: ${{ inputs.min_bedrooms }}
+          MAX_BEDROOMS: ${{ inputs.max_bedrooms }}
+          GUESTS: ${{ inputs.guests }}
+          DAYS_FROM_NOW: ${{ inputs.days_from_now }}
+          STAY_DURATION: ${{ inputs.stay_duration }}
+          CURRENCY: ${{ inputs.currency }}
+        run: python scrape_benchmark.py
+      
+      - name: Upload CSV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: airbnb-benchmark-data
+          path: benchmark_*.csv
+      
+      - name: Commit results
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add benchmark_*.csv || true
+          git commit -m "Benchmark data $(date +'%Y-%m-%d %H:%M')" || true
+          git push || true
